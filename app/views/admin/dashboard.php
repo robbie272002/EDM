@@ -157,22 +157,25 @@ try {
         ? round((($visitorData['current_month'] - $visitorData['last_month']) / $visitorData['last_month']) * 100, 2)
         : 0;
 
-    // Total Transactions
-    $stmt = $pdo->query("
-        SELECT 
-            COUNT(*) as current_month,
-            (SELECT COUNT(*) 
-             FROM sales 
-             WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL 60 DAY)
-             AND created_at < DATE_SUB(CURDATE(), INTERVAL 30 DAY)) as last_month
+    // Get total transactions (total count of sales)
+    $stmt = $pdo->prepare("SELECT COUNT(*) as total_transactions FROM sales");
+    $stmt->execute();
+    $totalTransactions = $stmt->fetchColumn();
+
+    // Get previous month's transactions for comparison
+    $stmt = $pdo->prepare("
+        SELECT COUNT(*) as last_month_transactions 
         FROM sales 
-        WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
+        WHERE created_at >= DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 1 MONTH), '%Y-%m-01')
+        AND created_at < DATE_FORMAT(CURDATE(), '%Y-%m-01')
     ");
-    $transactionData = $stmt->fetch(PDO::FETCH_ASSOC);
-    $totalTransactions = $transactionData['current_month'];
-    $transactionChange = $transactionData['last_month'] > 0 
-        ? round((($transactionData['current_month'] - $transactionData['last_month']) / $transactionData['last_month']) * 100, 2)
-        : 0;
+    $stmt->execute();
+    $lastMonthTransactions = $stmt->fetchColumn();
+
+    // Calculate percentage change
+    $transactionChange = $lastMonthTransactions > 0 
+        ? round((($totalTransactions - $lastMonthTransactions) / $lastMonthTransactions) * 100, 2)
+        : ($totalTransactions > 0 ? 100 : 0);
 
     // Sales Conversion Rate
     $stmt = $pdo->query("

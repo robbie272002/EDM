@@ -13,17 +13,21 @@ header('Access-Control-Allow-Methods: POST');
 header('Access-Control-Allow-Headers: Content-Type');
 
 // Log incoming request
-error_log("Received transaction request: " . file_get_contents('php://input'));
+$rawInput = file_get_contents('php://input');
+error_log("Received transaction request: " . $rawInput);
 
 // Get JSON input
-$data = json_decode(file_get_contents('php://input'), true);
+$data = json_decode($rawInput, true);
 
 if (!$data) {
-    error_log("Invalid JSON input received");
+    error_log("Invalid JSON input received. JSON error: " . json_last_error_msg());
     http_response_code(400);
-    echo json_encode(['success' => false, 'error' => 'Invalid input']);
+    echo json_encode(['success' => false, 'error' => 'Invalid input: ' . json_last_error_msg()]);
     exit;
 }
+
+// Log decoded data
+error_log("Decoded transaction data: " . print_r($data, true));
 
 // Validate required fields
 $requiredFields = ['cart', 'paymentMethod', 'cashier', 'transactionId', 'total', 'tax'];
@@ -38,6 +42,7 @@ foreach ($requiredFields as $field) {
 
 try {
     $pdo->beginTransaction();
+    error_log("Started database transaction");
 
     // Get user_id from cashier name
     $userStmt = $pdo->prepare("SELECT id FROM users WHERE name = ?");
@@ -45,15 +50,17 @@ try {
     $user = $userStmt->fetch(PDO::FETCH_ASSOC);
     if (!$user) {
         error_log("Cashier not found: " . $data['cashier']);
-        throw new Exception('Cashier not found');
+        throw new Exception('Cashier not found: ' . $data['cashier']);
     }
     $user_id = $user['id'];
+    error_log("Found user_id: " . $user_id);
 
     // Insert into sales table
     $saleStmt = $pdo->prepare("INSERT INTO sales 
         (transaction_id, user_id, total_amount, subtotal, discount_amount, tax_amount, payment_method) 
         VALUES (?, ?, ?, ?, ?, ?, ?)");
-    $saleStmt->execute([
+    
+    $saleParams = [
         $data['transactionId'],
         $user_id,
         $data['total'],
@@ -61,7 +68,10 @@ try {
         $data['discount']['amount'],
         $data['tax'],
         $data['paymentMethod']
-    ]);
+    ];
+    error_log("Executing sales insert with params: " . print_r($saleParams, true));
+    
+    $saleStmt->execute($saleParams);
     $sale_id = $pdo->lastInsertId();
     error_log("Created sale with ID: " . $sale_id);
 
@@ -94,7 +104,7 @@ try {
         // Validate item data
         if (!isset($item['sku']) || !isset($item['quantity']) || !isset($item['price'])) {
             error_log("Invalid item data: " . json_encode($item));
-            throw new Exception('Invalid item data');
+            throw new Exception('Invalid item data: ' . json_encode($item));
         }
 
         // Get product_id
@@ -148,6 +158,7 @@ try {
 } catch (Exception $e) {
     $pdo->rollBack();
     error_log("Transaction failed: " . $e->getMessage());
+    error_log("Stack trace: " . $e->getTraceAsString());
     http_response_code(500);
     echo json_encode([
         'success' => false,

@@ -54,15 +54,34 @@ try {
 
 <!-- Dashboard Section -->
 <div id="dashboard" class="section-content p-6">
+    <!-- Date Range Selector -->
+    <div class="mb-6">
+        <div class="flex items-center space-x-4">
+            <select name="date_range" class="border border-gray-300 rounded px-3 py-2">
+                <option value="today">Today</option>
+                <option value="week">This Week</option>
+                <option value="month" selected>This Month</option>
+                <option value="quarter">This Quarter</option>
+                <option value="year">This Year</option>
+                <option value="custom">Custom Range</option>
+            </select>
+            <div class="custom-date-inputs hidden">
+                <input type="date" name="start_date" class="border border-gray-300 rounded px-3 py-2">
+                <input type="date" name="end_date" class="border border-gray-300 rounded px-3 py-2">
+            </div>
+        </div>
+    </div>
+
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
-        <!-- Card 1: Today's Sales -->
-        <div class="card-hover bg-white rounded-lg shadow p-6 transition-all duration-200">
+        <!-- Card 1: Total Sales -->
+        <div class="total-sales card-hover bg-white rounded-lg shadow p-6 transition-all duration-200">
             <div class="flex justify-between items-start">
                 <div>
-                    <p class="text-sm font-medium text-gray-500">Today's Sales</p>
-                    <h3 class="text-2xl font-bold mt-1"><?= number_format($todaySales, 2) ?> <?= CONFIG['CURRENCY'] ?></h3>
-                    <p class="text-sm text-green-500 mt-2 flex items-center">
-                        <i class="fas fa-arrow-up mr-1"></i> Today's total
+                    <p class="text-sm font-medium text-gray-500">Total Sales</p>
+                    <h3 class="text-2xl font-bold mt-1 value">₱<?= number_format($todaySales, 2) ?></h3>
+                    <p class="text-sm mt-2 flex items-center growth">
+                        <i class="fas fa-arrow-up mr-1"></i>
+                        <span>0% vs last period</span>
                     </p>
                 </div>
                 <div class="bg-blue-100 p-3 rounded-lg">
@@ -71,55 +90,65 @@ try {
             </div>
         </div>
         
-        <!-- Card 2: Transactions -->
-        <div class="card-hover bg-white rounded-lg shadow p-6 transition-all duration-200">
+        <!-- Card 2: Total Discount -->
+        <div class="total-discount card-hover bg-white rounded-lg shadow p-6 transition-all duration-200">
             <div class="flex justify-between items-start">
                 <div>
-                    <p class="text-sm font-medium text-gray-500">Transactions</p>
-                    <h3 class="text-2xl font-bold mt-1"><?= $todayTransactions ?></h3>
-                    <p class="text-sm text-green-500 mt-2 flex items-center">
-                        <i class="fas fa-receipt mr-1"></i> Today's transactions
+                    <p class="text-sm font-medium text-gray-500">Total Discount</p>
+                    <h3 class="text-2xl font-bold mt-1 value">₱0.00</h3>
+                    <p class="text-sm mt-2 flex items-center growth">
+                        <i class="fas fa-arrow-up mr-1"></i>
+                        <span>0% vs last period</span>
                     </p>
                 </div>
                 <div class="bg-green-100 p-3 rounded-lg">
-                    <i class="fas fa-receipt text-green-600 text-xl"></i>
+                    <i class="fas fa-tags text-green-600 text-xl"></i>
                 </div>
             </div>
         </div>
         
-        <!-- Card 3: Low Stock Items -->
-        <div class="card-hover bg-white rounded-lg shadow p-6 transition-all duration-200">
+        <!-- Card 3: Total Revenue -->
+        <div class="total-revenue card-hover bg-white rounded-lg shadow p-6 transition-all duration-200">
             <div class="flex justify-between items-start">
                 <div>
-                    <p class="text-sm font-medium text-gray-500">Low Stock Items</p>
-                    <h3 class="text-2xl font-bold mt-1"><?= $lowStockItems ?></h3>
-                    <p class="text-sm text-red-500 mt-2 flex items-center">
-                        <i class="fas fa-exclamation-circle mr-1"></i> Needs attention
+                    <p class="text-sm font-medium text-gray-500">Total Revenue</p>
+                    <h3 class="text-2xl font-bold mt-1 value">₱0.00</h3>
+                    <p class="text-sm mt-2 flex items-center growth">
+                        <i class="fas fa-arrow-up mr-1"></i>
+                        <span>0% vs last period</span>
                     </p>
                 </div>
                 <div class="bg-yellow-100 p-3 rounded-lg">
-                    <i class="fas fa-box-open text-yellow-600 text-xl"></i>
+                    <i class="fas fa-chart-line text-yellow-600 text-xl"></i>
                 </div>
             </div>
         </div>
         
-        <!-- Card 4: Active Users -->
-        <div class="card-hover bg-white rounded-lg shadow p-6 transition-all duration-200">
+        <!-- Card 4: Total Transactions -->
+        <div class="total-transactions card-hover bg-white rounded-lg shadow p-6 transition-all duration-200">
             <div class="flex justify-between items-start">
                 <div>
-                    <p class="text-sm font-medium text-gray-500">Active Users</p>
-                    <h3 class="text-2xl font-bold mt-1"><?= $activeUsers ?></h3>
-                    <p class="text-sm text-gray-500 mt-2 flex items-center">
-                        <i class="fas fa-user-clock mr-1"></i> Currently active
+                    <p class="text-sm font-medium text-gray-500">Total Transactions</p>
+                    <h3 class="text-2xl font-bold mt-1 value"><?= $todayTransactions ?></h3>
+                    <p class="text-sm mt-2 flex items-center growth">
+                        <i class="fas fa-arrow-up mr-1"></i>
+                        <span>0% vs last period</span>
                     </p>
                 </div>
                 <div class="bg-purple-100 p-3 rounded-lg">
-                    <i class="fas fa-users text-purple-600 text-xl"></i>
+                    <i class="fas fa-receipt text-purple-600 text-xl"></i>
                 </div>
             </div>
         </div>
     </div>
+
+    <!-- Hidden inputs for date range -->
+    <input type="hidden" id="hiddenStartDate" value="">
+    <input type="hidden" id="hiddenEndDate" value="">
     
+    <!-- Error message div -->
+    <div id="error-message" class="hidden bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-6"></div>
+
     <!-- Charts Row -->
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
         <!-- Sales Chart -->

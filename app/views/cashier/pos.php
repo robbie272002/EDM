@@ -37,6 +37,12 @@ $transactionId = date('Ymd') . '-' . str_pad(mt_rand(1, 999), 3, '0', STR_PAD_LE
 $stmt = $pdo->prepare("SELECT COUNT(*) FROM users WHERE status = 'active' AND (id = 1 OR role = 'admin')");
 $stmt->execute();
 $totalUsers = $stmt->fetchColumn();
+
+// Pass PHP variables to JavaScript
+$jsInitialData = [
+    'cashierName' => $user['name'],
+    'transactionId' => $transactionId
+];
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -44,6 +50,10 @@ $totalUsers = $stmt->fetchColumn();
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Retail POS System</title>
+    <script>
+        // Initialize data from PHP
+        const initialData = <?php echo json_encode($jsInitialData); ?>;
+    </script>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;500;700&display=swap" rel="stylesheet">
@@ -57,10 +67,32 @@ $totalUsers = $stmt->fetchColumn();
         .blink { animation: blink 1s step-end infinite;}
         @keyframes blink { from, to { opacity: 1 } 50% { opacity: 0.5 } }
         @media print {
-            body * { visibility: hidden; }
-            .receipt-print, .receipt-print * { visibility: visible; }
-            .receipt-print { position: absolute; left: 0; top: 0; width: 80mm; padding: 0; margin: 0; background: white; box-shadow: none; }
-            .no-print { display: none !important; }
+            @page {
+                size: 80mm auto;
+                margin: 0;
+            }
+            
+            body * {
+                visibility: hidden;
+            }
+            
+            .receipt-print, .receipt-print * {
+                visibility: visible;
+            }
+            
+            .receipt-print {
+                position: absolute;
+                left: 0;
+                top: 0;
+                width: 80mm;
+                margin: 0;
+                padding: 0;
+                background: white;
+            }
+            
+            .no-print {
+                display: none !important;
+            }
         }
     </style>
 </head>
@@ -126,7 +158,7 @@ $totalUsers = $stmt->fetchColumn();
                         Stock: <span class="<?= $product['stock'] <= 0 ? 'text-red-500' : 'text-gray-700' ?>"><?= (int)$product['stock'] ?></span>
                     </p>
                     <div class="flex justify-between items-center mt-2">
-                        <span class="font-bold text-indigo-600">$<?= number_format($product['price'], 2) ?></span>
+                        <span class="font-bold text-indigo-600">₱<?= number_format($product['price'], 2) ?></span>
                         <button class="bg-indigo-100 text-indigo-600 p-1 rounded-full w-6 h-6 flex items-center justify-center" <?php if ($product['stock'] <= 0) echo 'disabled'; ?>>
                             <i class="fas fa-plus text-xs"></i>
                         </button>
@@ -166,19 +198,19 @@ $totalUsers = $stmt->fetchColumn();
                 <div class="space-y-2 mb-4">
                     <div class="flex justify-between">
                         <span>Subtotal:</span>
-                        <span>$<span id="subtotal">0.00</span></span>
+                        <span>₱<span id="subtotal">0.00</span></span>
                     </div>
                     <div class="flex justify-between" id="discount-row" style="display:none;">
                         <span id="discount-label">Discount (0%)</span>
-                        <span>-$<span id="discount-amount">0.00</span></span>
+                        <span>-₱<span id="discount-amount">0.00</span></span>
                     </div>
                     <div class="flex justify-between">
                         <span>Tax (<span id="tax-rate">8</span>%):</span>
-                        <span>$<span id="tax-amount">0.00</span></span>
+                        <span>₱<span id="tax-amount">0.00</span></span>
                     </div>
                     <div class="flex justify-between font-bold text-lg">
                         <span>Total:</span>
-                        <span>$<span id="total">0.00</span></span>
+                        <span>₱<span id="total">0.00</span></span>
                     </div>
                 </div>
                 <!-- Payment Methods -->
@@ -198,68 +230,89 @@ $totalUsers = $stmt->fetchColumn();
     </div>
 </div>
 <!-- Hidden receipt for printing -->
-<div id="printable-receipt" class="hidden receipt-print">
-    <div class="receipt-paper p-4 font-mono text-sm">
-        <div class="text-center mb-2">
-            <div class="font-bold">RETAIL STORE #042</div>
-            <div>123 Main Street, City</div>
-            <div>Tel: (555) 123-4567</div>
+<div id="receipt-template" class="receipt-print">
+    <div class="receipt-paper bg-white p-6 font-sans text-sm w-[80mm] mx-auto">
+        <!-- Logo and Header -->
+        <div class="text-center mb-6">
+            <h2 class="text-2xl font-light tracking-wide mb-1">RETAIL 042</h2>
+            <div class="text-xs text-gray-600 space-y-0.5">
+                <p>123 Main Street, City</p>
+                <p>Tel: (555) 123-4567</p>
+            </div>
         </div>
-        <div class="border-t border-b border-gray-300 py-2 my-2">
+        
+        <!-- Transaction Info -->
+        <div class="space-y-1.5 mb-6 text-xs">
             <div class="flex justify-between">
-                <span>Cashier: <span id="receipt-cashier"><?= htmlspecialchars($user['name']) ?></span></span>
-                <span>Terminal: 1</span>
+                <span class="text-gray-600">Cashier</span>
+                <span id="receipt-cashier" class="font-medium"></span>
             </div>
             <div class="flex justify-between">
-                <span>Date: <span id="receipt-date"></span></span>
-                <span>Time: <span id="receipt-time"></span></span>
+                <span class="text-gray-600">Date</span>
+                <span id="receipt-date" class="font-medium"></span>
             </div>
-            <div>Transaction: <span id="receipt-transaction"></span></div>
-        </div>
-        <div class="mb-4" id="receipt-items">
-            <!-- Items will be added here -->
-        </div>
-        <div class="border-t border-b border-gray-300 py-2 my-2 font-bold">
             <div class="flex justify-between">
-                <span>Subtotal:</span>
-                <span>$<span id="receipt-subtotal">0.00</span></span>
+                <span class="text-gray-600">Time</span>
+                <span id="receipt-time" class="font-medium"></span>
+            </div>
+            <div class="flex justify-between">
+                <span class="text-gray-600">Transaction</span>
+                <span id="receipt-transaction" class="font-medium"></span>
+            </div>
+        </div>
+        
+        <!-- Items -->
+        <div class="my-6" id="receipt-items">
+            <!-- Items will be dynamically added here -->
+        </div>
+        
+        <!-- Totals -->
+        <div class="space-y-1.5 text-xs">
+            <div class="flex justify-between">
+                <span class="text-gray-600">Subtotal</span>
+                <span>₱<span id="receipt-subtotal" class="font-medium">0.00</span></span>
             </div>
             <div id="receipt-discount-row" class="flex justify-between" style="display:none;">
-                <span id="receipt-discount-label">Discount (0%)</span>
-                <span>-$<span id="receipt-discount-amount">0.00</span></span>
+                <span id="receipt-discount-label" class="text-gray-600">Discount</span>
+                <span>-₱<span id="receipt-discount-amount" class="font-medium">0.00</span></span>
             </div>
             <div class="flex justify-between">
-                <span>Tax (<span id="receipt-tax-rate">8</span>%):</span>
-                <span>$<span id="receipt-tax-amount">0.00</span></span>
+                <span class="text-gray-600">Tax (<span id="receipt-tax-rate">8</span>%)</span>
+                <span>₱<span id="receipt-tax-amount" class="font-medium">0.00</span></span>
             </div>
-            <div class="flex justify-between">
-                <span>Total:</span>
-                <span>$<span id="receipt-total">0.00</span></span>
-            </div>
-            <div class="flex justify-between">
-                <span>Payment Method:</span>
-                <span id="receipt-payment-method">Cash</span>
-            </div>
-            <div class="flex justify-between">
-                <span>Amount Tendered:</span>
-                <span>$<span id="receipt-tendered">0.00</span></span>
-            </div>
-            <div class="flex justify-between">
-                <span>Change:</span>
-                <span>$<span id="receipt-change">0.00</span></span>
+            <div class="flex justify-between text-sm font-semibold mt-3 pt-3 border-t border-gray-200">
+                <span>Total</span>
+                <span>₱<span id="receipt-total">0.00</span></span>
             </div>
         </div>
-        <div class="text-center mt-4 text-xs">
-            <div>Thank you for shopping with us!</div>
-            <div class="mt-1">Returns accepted within 30 days with receipt</div>
-            <div class="mt-2 text-[8px]">
-                <div>------------------------------------------</div>
-                <div>This is a computer generated receipt</div>
-                <div>No signature required</div>
+
+        <!-- Payment Info -->
+        <div class="mt-6 pt-3 border-t border-gray-200 space-y-1.5 text-xs">
+            <div class="flex justify-between">
+                <span class="text-gray-600">Payment Method</span>
+                <span id="receipt-payment-method" class="font-medium"></span>
+            </div>
+            <div class="flex justify-between">
+                <span class="text-gray-600">Amount Tendered</span>
+                <span>₱<span id="receipt-tendered" class="font-medium">0.00</span></span>
+            </div>
+            <div class="flex justify-between">
+                <span class="text-gray-600">Change</span>
+                <span>₱<span id="receipt-change" class="font-medium">0.00</span></span>
+            </div>
+        </div>
+        
+        <!-- Footer -->
+        <div class="mt-8 text-center">
+            <p class="text-xs mb-1">Thank you for your purchase</p>
+            <div class="text-[10px] text-gray-500 mt-4">
+                <p>Returns accepted within 30 days</p>
+                <p>with original receipt</p>
             </div>
         </div>
     </div>
 </div>
+
 <!-- Card Payment Modal -->
 <div id="card-payment-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
     <div class="bg-white rounded-lg p-6 w-96">
@@ -307,15 +360,15 @@ $totalUsers = $stmt->fetchColumn();
                 <label class="block text-sm font-medium text-gray-700">Amount Tendered</label>
                 <div class="mt-1 relative rounded-md shadow-sm">
                     <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                        <span class="text-gray-500 sm:text-sm">$</span>
+                        <span class="text-gray-500 sm:text-sm">₱</span>
                     </div>
                     <input type="text" id="cash-amount" class="block w-full pl-7 pr-12 rounded-md border-gray-300 focus:border-indigo-500 focus:ring-indigo-500" placeholder="0.00" onkeyup="validateCashAmount(this)">
                 </div>
                 <span id="cash-amount-error" class="text-red-500 text-sm hidden"></span>
             </div>
             <div class="bg-gray-50 p-3 rounded-lg">
-                <div class="text-sm text-gray-600">Total Amount: $<span id="modal-total">0.00</span></div>
-                <div class="text-sm text-gray-600">Change: $<span id="modal-change">0.00</span></div>
+                <div class="text-sm text-gray-600">Total Amount: ₱<span id="modal-total">0.00</span></div>
+                <div class="text-sm text-gray-600">Change: ₱<span id="modal-change">0.00</span></div>
             </div>
         </div>
         <div class="mt-6">
@@ -358,14 +411,131 @@ $totalUsers = $stmt->fetchColumn();
 <script>
     // Global variables
     let cart = [];
-    let currentTransactionId = '<?= $transactionId ?>';
+    let currentTransactionId = initialData.transactionId;
     let currentAmount = '';
     let taxRate = 8; // 8% tax rate
     let currentPaymentMethod = '';
     let currentDiscount = 0;
 
-    // Initialize transaction ID
-    document.getElementById('transaction-id').textContent = currentTransactionId;
+    // Function to generate new transaction ID
+    function generateNewTransactionId() {
+        const date = new Date();
+        const dateStr = date.getFullYear() + 
+            String(date.getMonth() + 1).padStart(2, '0') + 
+            String(date.getDate()).padStart(2, '0');
+        const randomNum = Math.floor(Math.random() * 999).toString().padStart(3, '0');
+        return `${dateStr}-${randomNum}`;
+    }
+
+    function processPayment(method, amountTendered = 0, paymentInfo = {}) {
+        if (cart.length === 0) {
+            alert('Cart is empty!');
+            return;
+        }
+
+        const total = parseFloat(document.getElementById('total').textContent);
+        
+        // Validate cash payment
+        if (method === 'cash') {
+            if (!amountTendered || isNaN(amountTendered)) {
+                const cashInput = document.getElementById('cash-amount');
+                amountTendered = parseFloat(cashInput.value);
+            }
+            if (isNaN(amountTendered) || amountTendered < total) {
+                alert('Invalid amount or insufficient payment!');
+                return;
+            }
+        }
+
+        // Store cart data before clearing
+        const cartData = cart.map(item => ({
+            sku: item.sku,
+            quantity: item.quantity,
+            price: item.price,
+            name: item.name
+        }));
+        
+        // Update receipt with transaction details
+        updateReceipt(method, amountTendered, paymentInfo);
+        
+        // Record transaction
+        fetch('/NEW/app/api/record_transaction.php', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                cart: cartData,
+                paymentMethod: method,
+                cashier: initialData.cashierName,
+                transactionId: currentTransactionId,
+                total: total,
+                subtotal: parseFloat(document.getElementById('subtotal').textContent),
+                tax: parseFloat(document.getElementById('tax-amount').textContent),
+                discount: {
+                    percentage: currentDiscount,
+                    amount: parseFloat(document.getElementById('discount-amount').textContent || '0')
+                },
+                amountTendered: amountTendered
+            })
+        })
+        .then(response => {
+            if (!response.ok) {
+                return response.json().then(err => {
+                    throw new Error(err.error || 'Failed to record transaction');
+                });
+            }
+            return response.json();
+        })
+        .then(data => {
+            if (data.success) {
+                // Print receipt using browser print dialog
+                window.print();
+                
+                // Clear cart and reset
+                cart = [];
+                updateCartDisplay();
+                updateTotals();
+                
+                // Generate new transaction ID
+                currentTransactionId = generateNewTransactionId();
+                document.getElementById('transaction-id').textContent = currentTransactionId;
+                
+                // Reset other values
+                currentDiscount = 0;
+                currentAmount = '';
+                
+                // Update product stock
+                updateProductGridStockAfterSale(cartData);
+                
+                // Reset payment modal
+                if (method === 'cash') {
+                    const modal = document.getElementById('cash-payment-modal');
+                    if (modal) modal.classList.add('hidden');
+                    const input = document.getElementById('cash-amount');
+                    if (input) input.value = '';
+                }
+
+                alert('Transaction completed successfully!');
+            } else {
+                throw new Error(data.error || 'Failed to record transaction');
+            }
+        })
+        .catch(error => {
+            console.error('Transaction error:', error);
+            alert('Error: ' + error.message + '\nPlease try again or contact admin.');
+        });
+    }
+
+    // Initialize transaction ID and cashier name
+    document.addEventListener('DOMContentLoaded', function() {
+        document.getElementById('receipt-cashier').textContent = initialData.cashierName;
+        document.getElementById('transaction-id').textContent = currentTransactionId;
+        updateCurrentTime();
+        setInterval(updateCurrentTime, 60000);
+        updateCartDisplay();
+        updateTotals();
+    });
 
     // Search functionality
     function searchProducts(query) {
@@ -878,175 +1048,60 @@ $totalUsers = $stmt->fetchColumn();
         return true;
     }
 
-    function processPayment(method, amountTendered = 0, paymentInfo = {}) {
-        if (cart.length === 0) {
-            alert('Cart is empty!');
-            return;
-        }
-        const total = parseFloat(document.getElementById('total').textContent);
-        // Use modal value for cash
-        if (method === 'cash') {
-            if (!amountTendered || isNaN(amountTendered)) {
-                const cashInput = document.getElementById('cash-amount');
-                amountTendered = parseFloat(cashInput.value);
-            }
-            if (isNaN(amountTendered) || amountTendered < total) {
-                alert('Invalid amount or insufficient payment!');
-                return;
-            }
-        }
-        // Update receipt
-        updateReceipt(method, amountTendered, paymentInfo);
-        document.getElementById('printable-receipt').classList.remove('hidden');
-        setTimeout(() => {
-            window.print();
-            document.getElementById('printable-receipt').classList.add('hidden');
-            
-            // Store cart data before clearing
-            const cartData = [...cart];
-            
-            // --- AJAX call to record transaction ---
-            const xhr = new XMLHttpRequest();
-            xhr.open('POST', '/NEW/app/api/record_transaction.php', true);
-            xhr.setRequestHeader('Content-Type', 'application/json');
-            
-            // Add loading state
-            const submitButton = document.querySelector('button[onclick="submit' + method.charAt(0).toUpperCase() + method.slice(1) + 'Payment()"]');
-            if (submitButton) {
-                submitButton.disabled = true;
-                submitButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing...';
-            }
-            
-            xhr.onreadystatechange = function() {
-                if (xhr.readyState === 4) {
-                    // Re-enable button if it exists
-                    if (submitButton) {
-                        submitButton.disabled = false;
-                        submitButton.innerHTML = 'Process Payment';
-                    }
-                    
-                    if (xhr.status === 200) {
-                        try {
-                            const response = JSON.parse(xhr.responseText);
-                            if (response.success) {
-                                // Clear cart and reset only after success
-                                cart = [];
-                                currentAmount = '';
-                                // Generate new transaction ID
-                                const date = new Date();
-                                const dateStr = date.getFullYear() + 
-                                               String(date.getMonth() + 1).padStart(2, '0') + 
-                                               String(date.getDate()).padStart(2, '0');
-                                const randomNum = Math.floor(Math.random() * 999).toString().padStart(3, '0');
-                                currentTransactionId = `${dateStr}-${randomNum}`;
-                                document.getElementById('transaction-id').textContent = currentTransactionId;
-                                updateCartDisplay();
-                                updateTotals();
-                                updateProductGridStockAfterSale(cartData);
-                                
-                                // Show success message
-                                alert('Transaction completed successfully!');
-                            } else {
-                                alert('Failed to record transaction: ' + (response.error || 'Unknown error'));
-                                console.error('Server error:', response.error);
-                            }
-                        } catch (e) {
-                            alert('Error processing server response. Please contact admin.');
-                            console.error('Server response error:', e);
-                            console.error('Raw response:', xhr.responseText);
-                        }
-                    } else {
-                        alert('Failed to record transaction! Please contact admin.');
-                        console.error('Server error:', xhr.status, xhr.statusText);
-                        console.error('Response:', xhr.responseText);
-                    }
-                }
-            };
-            
-            xhr.onerror = function() {
-                // Re-enable button
-                if (submitButton) {
-                    submitButton.disabled = false;
-                    submitButton.innerHTML = 'Process Payment';
-                }
-                alert('Network error occurred. Please check your connection and try again.');
-                console.error('Network error occurred');
-            };
-            
-            // Prepare transaction data
-            const transactionData = {
-                cart: cartData,
-                paymentInfo: paymentInfo,
-                paymentMethod: method,
-                amountTendered: amountTendered,
-                cashier: document.getElementById('receipt-cashier').textContent,
-                transactionId: currentTransactionId,
-                subtotal: parseFloat(document.getElementById('subtotal').textContent),
-                discount: {
-                    percentage: currentDiscount,
-                    amount: parseFloat(document.getElementById('discount-amount').textContent)
-                },
-                tax: parseFloat(document.getElementById('tax-amount').textContent),
-                total: total
-            };
-            
-            console.log('Sending transaction data:', transactionData);
-            xhr.send(JSON.stringify(transactionData));
-        }, 500);
-    }
-
     function updateReceipt(method, amountTendered, paymentInfo) {
+        // Set date and time
         const now = new Date();
         document.getElementById('receipt-date').textContent = now.toLocaleDateString();
         document.getElementById('receipt-time').textContent = now.toLocaleTimeString();
-        document.getElementById('receipt-transaction').textContent = currentTransactionId;
         
-        // Items
-        const receiptItems = document.getElementById('receipt-items');
-        receiptItems.innerHTML = '';
+        // Set cashier and transaction details
+        document.getElementById('receipt-cashier').textContent = initialData.cashierName;
+        document.getElementById('receipt-transaction').textContent = currentTransactionId;
+        document.getElementById('receipt-payment-method').textContent = method.charAt(0).toUpperCase() + method.slice(1);
+        
+        // Format amounts
+        document.getElementById('receipt-subtotal').textContent = document.getElementById('subtotal').textContent;
+        document.getElementById('receipt-tax-amount').textContent = document.getElementById('tax-amount').textContent;
+        document.getElementById('receipt-total').textContent = document.getElementById('total').textContent;
+        document.getElementById('receipt-tendered').textContent = amountTendered.toFixed(2);
+        
+        // Calculate and display change
+        const total = parseFloat(document.getElementById('total').textContent);
+        const change = amountTendered - total;
+        document.getElementById('receipt-change').textContent = change.toFixed(2);
+        
+        // Handle discount if any
+        if (currentDiscount > 0) {
+            document.getElementById('receipt-discount-row').style.display = 'flex';
+            document.getElementById('receipt-discount-label').textContent = `Discount (${currentDiscount}%)`;
+            document.getElementById('receipt-discount-amount').textContent = document.getElementById('discount-amount').textContent;
+        } else {
+            document.getElementById('receipt-discount-row').style.display = 'none';
+        }
+        
+        // Clear and populate items
+        const itemsContainer = document.getElementById('receipt-items');
+        itemsContainer.innerHTML = '';
+        
+        // Add items with modern styling
         cart.forEach(item => {
-            const itemTotal = item.price * item.quantity;
-            receiptItems.innerHTML += `
-                <div class="flex justify-between text-sm">
-                    <span>${item.name} × ${item.quantity}</span>
-                    <span>$${itemTotal.toFixed(2)}</span>
+            const itemRow = document.createElement('div');
+            itemRow.className = 'mb-2 text-xs';
+            itemRow.innerHTML = `
+                <div class="flex justify-between items-start">
+                    <div class="flex-1">
+                        <div class="font-medium">${item.name}</div>
+                        <div class="text-gray-600">
+                            ${item.quantity} × ₱${item.price.toFixed(2)}
+                        </div>
+                    </div>
+                    <div class="font-medium ml-4">
+                        ₱${(item.quantity * item.price).toFixed(2)}
+                    </div>
                 </div>
             `;
+            itemsContainer.appendChild(itemRow);
         });
-
-        // Update totals with discount
-        const subtotal = parseFloat(document.getElementById('subtotal').textContent);
-        const discountAmount = subtotal * (currentDiscount / 100);
-        const discountedSubtotal = subtotal - discountAmount;
-        const taxAmount = discountedSubtotal * (taxRate / 100);
-        const total = discountedSubtotal + taxAmount;
-
-        // Update receipt totals
-        document.getElementById('receipt-subtotal').textContent = subtotal.toFixed(2);
-        document.getElementById('receipt-discount-row').style.display = currentDiscount > 0 ? '' : 'none';
-        document.getElementById('receipt-discount-amount').textContent = discountAmount.toFixed(2);
-        document.getElementById('receipt-discount-label').textContent = `Discount (${currentDiscount}%)`;
-        document.getElementById('receipt-tax-rate').textContent = taxRate;
-        document.getElementById('receipt-tax-amount').textContent = taxAmount.toFixed(2);
-        document.getElementById('receipt-total').textContent = total.toFixed(2);
-
-        // Payment method
-        let paymentMethodText = method.charAt(0).toUpperCase() + method.slice(1);
-        if (method === 'card') {
-            paymentMethodText += ` (****${paymentInfo.cardNumber.slice(-4)})`;
-        } else if (method === 'mobile') {
-            paymentMethodText += ` (${paymentInfo.walletType})`;
-        }
-        document.getElementById('receipt-payment-method').textContent = paymentMethodText;
-        
-        if (method === 'cash') {
-            const change = amountTendered - total;
-            document.getElementById('receipt-tendered').textContent = amountTendered.toFixed(2);
-            document.getElementById('receipt-change').textContent = change.toFixed(2);
-        } else {
-            document.getElementById('receipt-tendered').textContent = total.toFixed(2);
-            document.getElementById('receipt-change').textContent = '0.00';
-        }
     }
 
     // Numeric keypad functions
@@ -1071,7 +1126,7 @@ $totalUsers = $stmt->fetchColumn();
         }
         
         const change = tendered - total;
-        alert(`Change: $${change.toFixed(2)}`);
+        alert(`Change: ₱${change.toFixed(2)}`);
     }
 
     function completeSale() {
@@ -1114,82 +1169,6 @@ $totalUsers = $stmt->fetchColumn();
         document.getElementById('current-time').textContent = timeString;
     }
 
-    // Initialize
-    document.addEventListener('DOMContentLoaded', function() {
-        updateCurrentTime();
-        setInterval(updateCurrentTime, 60000);
-        updateCartDisplay();
-        updateTotals();
-
-        // Update payment buttons
-        document.querySelector('button[onclick="processCardPayment()"]').onclick = processCardPayment;
-        document.querySelector('button[onclick="processPayment(\'cash\')"]').onclick = processCashPayment;
-        document.querySelector('button[onclick="processMobilePayment()"]').onclick = processMobilePayment;
-    });
-
-    // Payment Modal Open/Close Functions
-    function processCardPayment() {
-        if (cart.length === 0) { alert('Cart is empty!'); return; }
-        currentPaymentMethod = 'card';
-        document.getElementById('card-payment-modal').classList.remove('hidden');
-        document.getElementById('card-payment-modal').classList.add('flex');
-    }
-    function processCashPayment() {
-        if (cart.length === 0) { alert('Cart is empty!'); return; }
-        currentPaymentMethod = 'cash';
-        document.getElementById('cash-payment-modal').classList.remove('hidden');
-        document.getElementById('cash-payment-modal').classList.add('flex');
-        const total = parseFloat(document.getElementById('total').textContent);
-        document.getElementById('modal-total').textContent = total.toFixed(2);
-        document.getElementById('cash-amount').value = '';
-        document.getElementById('modal-change').textContent = '0.00';
-    }
-    function processMobilePayment() {
-        if (cart.length === 0) { alert('Cart is empty!'); return; }
-        currentPaymentMethod = 'mobile';
-        document.getElementById('mobile-payment-modal').classList.remove('hidden');
-        document.getElementById('mobile-payment-modal').classList.add('flex');
-    }
-    function closeCardPaymentModal() {
-        document.getElementById('card-payment-modal').classList.add('hidden');
-        document.getElementById('card-payment-modal').classList.remove('flex');
-        document.getElementById('card-number').value = '';
-        document.getElementById('card-expiry').value = '';
-        document.getElementById('card-cvv').value = '';
-    }
-    function closeCashPaymentModal() {
-        document.getElementById('cash-payment-modal').classList.add('hidden');
-        document.getElementById('cash-payment-modal').classList.remove('flex');
-        document.getElementById('cash-amount').value = '';
-    }
-    function closeMobilePaymentModal() {
-        document.getElementById('mobile-payment-modal').classList.add('hidden');
-        document.getElementById('mobile-payment-modal').classList.remove('flex');
-        document.getElementById('mobile-number').value = '';
-    }
-    // Submit Handlers
-    function submitCardPayment() {
-        const paymentInfo = validateCardPayment();
-        if (paymentInfo) {
-            processPayment('card', 0, paymentInfo);
-            closeCardPaymentModal();
-        }
-    }
-    function submitCashPayment() {
-        const paymentInfo = validateCashPayment();
-        if (paymentInfo) {
-            processPayment('cash', paymentInfo.amount, paymentInfo);
-            closeCashPaymentModal();
-        }
-    }
-    function submitMobilePayment() {
-        const paymentInfo = validateMobilePayment();
-        if (paymentInfo) {
-            processPayment('mobile', 0, paymentInfo);
-            closeMobilePaymentModal();
-        }
-    }
-
     function updateProductGridStockAfterSale(cartData) {
         cartData.forEach(item => {
             // Find the product card by SKU (or another unique identifier)
@@ -1214,6 +1193,77 @@ $totalUsers = $stmt->fetchColumn();
                 }
             });
         });
+    }
+
+    // Payment Modal Open/Close Functions
+    function processCardPayment() {
+        if (cart.length === 0) { alert('Cart is empty!'); return; }
+        currentPaymentMethod = 'card';
+        document.getElementById('card-payment-modal').classList.remove('hidden');
+        document.getElementById('card-payment-modal').classList.add('flex');
+    }
+    
+    function processCashPayment() {
+        if (cart.length === 0) { alert('Cart is empty!'); return; }
+        currentPaymentMethod = 'cash';
+        document.getElementById('cash-payment-modal').classList.remove('hidden');
+        document.getElementById('cash-payment-modal').classList.add('flex');
+        const total = parseFloat(document.getElementById('total').textContent);
+        document.getElementById('modal-total').textContent = total.toFixed(2);
+        document.getElementById('cash-amount').value = '';
+        document.getElementById('modal-change').textContent = '0.00';
+    }
+    
+    function processMobilePayment() {
+        if (cart.length === 0) { alert('Cart is empty!'); return; }
+        currentPaymentMethod = 'mobile';
+        document.getElementById('mobile-payment-modal').classList.remove('hidden');
+        document.getElementById('mobile-payment-modal').classList.add('flex');
+    }
+    
+    function closeCardPaymentModal() {
+        document.getElementById('card-payment-modal').classList.add('hidden');
+        document.getElementById('card-payment-modal').classList.remove('flex');
+        document.getElementById('card-number').value = '';
+        document.getElementById('card-expiry').value = '';
+        document.getElementById('card-cvv').value = '';
+    }
+    
+    function closeCashPaymentModal() {
+        document.getElementById('cash-payment-modal').classList.add('hidden');
+        document.getElementById('cash-payment-modal').classList.remove('flex');
+        document.getElementById('cash-amount').value = '';
+    }
+    
+    function closeMobilePaymentModal() {
+        document.getElementById('mobile-payment-modal').classList.add('hidden');
+        document.getElementById('mobile-payment-modal').classList.remove('flex');
+        document.getElementById('mobile-number').value = '';
+    }
+    
+    // Submit Handlers
+    function submitCardPayment() {
+        const paymentInfo = validateCardPayment();
+        if (paymentInfo) {
+            processPayment('card', 0, paymentInfo);
+            closeCardPaymentModal();
+        }
+    }
+    
+    function submitCashPayment() {
+        const paymentInfo = validateCashPayment();
+        if (paymentInfo) {
+            processPayment('cash', paymentInfo.amount, paymentInfo);
+            closeCashPaymentModal();
+        }
+    }
+    
+    function submitMobilePayment() {
+        const paymentInfo = validateMobilePayment();
+        if (paymentInfo) {
+            processPayment('mobile', 0, paymentInfo);
+            closeMobilePaymentModal();
+        }
     }
 
     (function() {

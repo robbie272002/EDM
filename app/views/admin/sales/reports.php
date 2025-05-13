@@ -17,22 +17,68 @@ $endDate = $_GET['end_date'] ?? $lastDayOfMonth;
 
 // Handle predefined date ranges
 switch ($dateRange) {
+    case 'today':
+        $startDate = date('Y-m-d');
+        $endDate = date('Y-m-d');
+        $prevStartDate = date('Y-m-d', strtotime('-1 day'));
+        $prevEndDate = $prevStartDate;
+        break;
+    case 'yesterday':
+        $startDate = date('Y-m-d', strtotime('-1 day'));
+        $endDate = date('Y-m-d', strtotime('-1 day'));
+        $prevStartDate = date('Y-m-d', strtotime('-2 days'));
+        $prevEndDate = $prevStartDate;
+        break;
     case 'week':
         $startDate = date('Y-m-d', strtotime('monday this week'));
-        $endDate = date('Y-m-d', strtotime('sunday this week'));
+        $endDate = date('w') == 0 ? date('Y-m-d') : min(date('Y-m-d'), date('Y-m-d', strtotime('sunday this week')));
+        $prevStartDate = date('Y-m-d', strtotime('monday last week'));
+        $prevEndDate = date('Y-m-d', strtotime('sunday last week'));
         break;
     case 'month':
         $startDate = date('Y-m-01');
-        $endDate = date('Y-m-t');
+        $endDate = min(date('Y-m-d'), date('Y-m-t'));
+        $prevStartDate = date('Y-m-01', strtotime('first day of last month'));
+        $prevEndDate = date('Y-m-t', strtotime('last day of last month'));
+        break;
+    case 'last_month':
+        $startDate = date('Y-m-01', strtotime('first day of last month'));
+        $endDate = date('Y-m-t', strtotime('last day of last month'));
+        $prevStartDate = date('Y-m-01', strtotime('first day of -2 month'));
+        $prevEndDate = date('Y-m-t', strtotime('last day of -2 month'));
         break;
     case 'quarter':
         $currentQuarter = ceil(date('n') / 3);
-        $startDate = date('Y-m-d', strtotime(date('Y') . '-' . (($currentQuarter - 1) * 3 + 1) . '-01'));
-        $endDate = date('Y-m-t', strtotime(date('Y') . '-' . ($currentQuarter * 3) . '-01'));
+        $currentYear = date('Y');
+        
+        $startMonth = (($currentQuarter - 1) * 3) + 1;
+        $endMonth = $currentQuarter * 3;
+        
+        $startDate = date('Y-m-d', strtotime("$currentYear-$startMonth-01"));
+        $endDate = min(date('Y-m-d'), date('Y-m-t', strtotime("$currentYear-$endMonth-01")));
+        
+        if ($currentQuarter == 1) {
+            $prevYear = $currentYear - 1;
+            $prevStartDate = date('Y-m-d', strtotime("$prevYear-10-01"));
+            $prevEndDate = date('Y-m-d', strtotime("$prevYear-12-31"));
+        } else {
+            $prevQuarterStart = $startMonth - 3;
+            $prevQuarterEnd = $endMonth - 3;
+            $prevStartDate = date('Y-m-d', strtotime("$currentYear-$prevQuarterStart-01"));
+            $prevEndDate = date('Y-m-t', strtotime("$currentYear-$prevQuarterEnd-01"));
+        }
         break;
     case 'year':
         $startDate = date('Y-01-01');
-        $endDate = date('Y-12-31');
+        $endDate = min(date('Y-m-d'), date('Y-12-31'));
+        $prevStartDate = date('Y-01-01', strtotime('-1 year'));
+        $prevEndDate = date('Y-12-31', strtotime('-1 year'));
+        break;
+    case 'last_year':
+        $startDate = date('Y-01-01', strtotime('-1 year'));
+        $endDate = date('Y-12-31', strtotime('-1 year'));
+        $prevStartDate = date('Y-01-01', strtotime('-2 year'));
+        $prevEndDate = date('Y-12-31', strtotime('-2 year'));
         break;
     case 'season':
         $currentMonth = date('n');
@@ -40,22 +86,41 @@ switch ($dateRange) {
             // Spring
             $startDate = date('Y-03-01');
             $endDate = date('Y-05-31');
+            $prevStartDate = date('Y-12-01', strtotime('-1 year'));
+            $prevEndDate = date('Y-02-28', strtotime('-1 year'));
         } elseif ($currentMonth >= 6 && $currentMonth <= 8) {
             // Summer
             $startDate = date('Y-06-01');
             $endDate = date('Y-08-31');
+            $prevStartDate = date('Y-03-01');
+            $prevEndDate = date('Y-05-31');
         } elseif ($currentMonth >= 9 && $currentMonth <= 11) {
             // Fall
             $startDate = date('Y-09-01');
             $endDate = date('Y-11-30');
+            $prevStartDate = date('Y-06-01');
+            $prevEndDate = date('Y-08-31');
         } else {
-            // Winter
+            // Winter (December, January, February)
             $startDate = date('Y-12-01');
             $endDate = date('Y-02-28');
+            $prevStartDate = date('Y-09-01', strtotime('-1 year'));
+            $prevEndDate = date('Y-11-30', strtotime('-1 year'));
         }
         break;
     case 'custom':
-        // Use the provided start_date and end_date
+        if (!empty($_GET['start_date']) && !empty($_GET['end_date'])) {
+            $startDate = date('Y-m-d', strtotime($_GET['start_date']));
+            $endDate = date('Y-m-d', strtotime($_GET['end_date']));
+            
+            if ($endDate < $startDate) {
+                $endDate = $startDate;
+            }
+
+            $duration = strtotime($endDate) - strtotime($startDate);
+            $prevStartDate = date('Y-m-d', strtotime("-1 day", strtotime($startDate)) - $duration);
+            $prevEndDate = date('Y-m-d', strtotime("-1 day", strtotime($startDate)));
+        }
         break;
 }
 
@@ -99,54 +164,70 @@ $stmt = $pdo->prepare($query);
 $stmt->execute([$startDate, $endDate]);
 $reportData = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-// Calculate totals based on report type
-switch ($reportType) {
-    case 'products':
-        $query = "SELECT 
-                    COALESCE(SUM(s.subtotal), 0) as total_revenue,
-                    COALESCE(SUM(s.discount_amount), 0) as total_discount
-                  FROM sales s 
-                  WHERE s.created_at BETWEEN ? AND ?";
-        $stmt = $pdo->prepare($query);
-        $stmt->execute([$startDate, $endDate]);
-        $totals = $stmt->fetch(PDO::FETCH_ASSOC);
-        $totalRevenue = $totals['total_revenue'];
-        $totalDiscount = $totals['total_discount'];
-        $totalSubtotal = $totalRevenue;
+// Get totals for the selected date range
+$stmt = $pdo->prepare("
+    SELECT 
+        COALESCE(SUM(subtotal), 0) as total_sales,
+        COALESCE(SUM(discount_amount), 0) as total_discount,
+        COALESCE(SUM(total_amount), 0) as total_revenue,
+        COUNT(DISTINCT id) as total_transactions
+    FROM sales 
+    WHERE DATE(created_at) BETWEEN ? AND ?
+    AND status = 'completed'
+");
 
-        $totalTransactions = array_sum(array_column($reportData, 'total_sales'));
-        $totalProducts = count($reportData);
-        $totalQuantity = array_sum(array_column($reportData, 'total_quantity'));
-        break;
-    default: // sales
-        $query = "SELECT 
-                    COALESCE(SUM(s.subtotal), 0) as total_revenue,
-                    COALESCE(SUM(s.discount_amount), 0) as total_discount,
-                    COUNT(DISTINCT s.id) as total_transactions
-                  FROM sales s 
-                  WHERE s.created_at BETWEEN ? AND ?";
-        $stmt = $pdo->prepare($query);
-        $stmt->execute([$startDate, $endDate]);
-        $totals = $stmt->fetch(PDO::FETCH_ASSOC);
-        $totalRevenue = $totals['total_revenue'];
-        $totalDiscount = $totals['total_discount'];
-        $totalSubtotal = $totalRevenue;
-        $totalTransactions = $totals['total_transactions'];
-        $totalProducts = array_sum(array_column($reportData, 'unique_products'));
-        $totalQuantity = 0; // Not applicable for sales report
+$currentPeriodParams = [$startDate, $endDate];
+$stmt->execute($currentPeriodParams);
+$totals = $stmt->fetch(PDO::FETCH_ASSOC);
+
+// Get totals for previous period
+$stmt = $pdo->prepare("
+    SELECT 
+        COALESCE(SUM(subtotal), 0) as prev_total_sales,
+        COALESCE(SUM(discount_amount), 0) as prev_total_discount,
+        COALESCE(SUM(total_amount), 0) as prev_total_revenue,
+        COUNT(DISTINCT id) as prev_total_transactions
+    FROM sales 
+    WHERE DATE(created_at) BETWEEN ? AND ?
+    AND status = 'completed'
+");
+
+$prevPeriodParams = [$prevStartDate, $prevEndDate];
+$stmt->execute($prevPeriodParams);
+$prevTotals = $stmt->fetch(PDO::FETCH_ASSOC);
+
+// Add debug logging
+error_log("Date Range: " . $dateRange);
+error_log("Current Period: " . $startDate . " to " . $endDate);
+error_log("Previous Period: " . $prevStartDate . " to " . $prevEndDate);
+error_log("Current Totals: " . json_encode($totals));
+error_log("Previous Totals: " . json_encode($prevTotals));
+
+// Calculate growth percentages with proper handling of zero values
+$salesGrowth = calculateGrowth($totals['total_sales'], $prevTotals['prev_total_sales']);
+$discountGrowth = calculateGrowth($totals['total_discount'], $prevTotals['prev_total_discount']);
+$revenueGrowth = calculateGrowth($totals['total_revenue'], $prevTotals['prev_total_revenue']);
+$transactionGrowth = calculateGrowth($totals['total_transactions'], $prevTotals['prev_total_transactions']);
+
+// Helper function to calculate growth percentage
+function calculateGrowth($current, $previous) {
+    if ($previous == 0) {
+        return $current > 0 ? 100 : 0;
+    }
+    return (($current - $previous) / $previous) * 100;
 }
 
-// Get previous period data for comparison
-$prevStartDate = date('Y-m-d', strtotime($startDate . ' -1 month'));
-$prevEndDate = date('Y-m-d', strtotime($endDate . ' -1 month'));
-
-$query = "SELECT COALESCE(SUM(subtotal), 0) as total_revenue FROM sales WHERE created_at BETWEEN ? AND ?";
-$stmt = $pdo->prepare($query);
-$stmt->execute([$prevStartDate, $prevEndDate]);
-$prevTotalRevenue = $stmt->fetch(PDO::FETCH_ASSOC)['total_revenue'];
-
-// Calculate growth
-$growth = $prevTotalRevenue > 0 ? (($totalRevenue - $prevTotalRevenue) / $prevTotalRevenue) * 100 : 0;
+// Update the display text based on the selected period
+$periodText = match($dateRange) {
+    'today' => 'vs yesterday',
+    'yesterday' => 'vs day before',
+    'week' => 'vs last week',
+    'month' => 'vs last month',
+    'quarter' => 'vs last quarter',
+    'year' => 'vs last year',
+    'custom' => 'vs previous period',
+    default => 'vs last period'
+};
 
 // Add predictive analytics calculations
 function calculateMovingAverage($data, $period = 3) {
@@ -198,6 +279,9 @@ function calculateForecast($data, $periods = 3) {
 // Prepare data for charts
 $chartData = [];
 $forecastData = [];
+$chartLabels = [];
+$revenueData = [];
+$transactionData = [];
 
 if ($reportType === 'sales') {
     // Get daily sales data for charts with all dates in range
@@ -215,7 +299,7 @@ if ($reportType === 'sales') {
             COALESCE(SUM(s.subtotal), 0) as total_subtotal,
             COALESCE(SUM(s.total_amount), 0) as total_amount
         FROM dates d
-        LEFT JOIN sales s ON DATE(s.created_at) = d.date
+        LEFT JOIN sales s ON DATE(s.created_at) = d.date AND s.status = 'completed'
         GROUP BY d.date
         ORDER BY d.date ASC";
     
@@ -223,14 +307,10 @@ if ($reportType === 'sales') {
     $dailyStmt->execute([$startDate, $endDate]);
     $dailyData = $dailyStmt->fetchAll(PDO::FETCH_ASSOC);
 
-    $chartLabels = [];
-    $revenueData = [];
-    $transactionData = [];
-
     foreach ($dailyData as $row) {
         $chartLabels[] = date('M d', strtotime($row['sale_date']));
-        $revenueData[] = $row['total_subtotal'];
-        $transactionData[] = $row['total_transactions'];
+        $revenueData[] = floatval($row['total_subtotal']);
+        $transactionData[] = intval($row['total_transactions']);
     }
     
     // Calculate moving averages
@@ -251,67 +331,125 @@ if ($reportType === 'sales') {
         'transactionForecast' => $transactionForecast
     ];
 } elseif ($reportType === 'products') {
-    // Sort products by subtotal in descending order
-    usort($reportData, function($a, $b) {
-        return $b['total_subtotal'] - $a['total_subtotal'];
-    });
-    
-    // Take top 10 products
-    $topProducts = array_slice($reportData, 0, 10);
-    
-    foreach ($topProducts as $row) {
-        $chartLabels[] = $row['product_name'];
-        $revenueData[] = $row['total_subtotal'];
-        $transactionData[] = $row['total_sales'];
-    }
-
-    // For time series chart, get daily data for each product
-    $dailyQuery = "SELECT 
-        DATE(s.created_at) as sale_date,
-        p.name as product_name,
-        SUM(s.subtotal * (si.quantity * si.price) / s.subtotal) as product_subtotal
+    // Get product performance data
+    $productQuery = "
+        SELECT 
+            p.name as product_name,
+            COUNT(DISTINCT s.id) as total_sales,
+            SUM(si.quantity) as total_quantity,
+            SUM(si.quantity * si.price) as total_revenue,
+            AVG(si.price) as avg_price
         FROM sales s
         JOIN sale_items si ON s.id = si.sale_id
         JOIN products p ON si.product_id = p.id
-        WHERE s.created_at BETWEEN ? AND ?
-        AND p.id IN (SELECT id FROM products WHERE name IN (" . implode(',', array_fill(0, count($topProducts), '?')) . "))
-        GROUP BY DATE(s.created_at), p.name
-        ORDER BY sale_date ASC, p.name";
+        WHERE DATE(s.created_at) BETWEEN ? AND ?
+        AND s.status = 'completed'
+        GROUP BY p.id, p.name
+        ORDER BY total_revenue DESC
+        LIMIT 10";
     
-    $params = array_merge([$startDate, $endDate], array_column($topProducts, 'product_name'));
-    $dailyStmt = $pdo->prepare($dailyQuery);
-    $dailyStmt->execute($params);
-    $dailyData = $dailyStmt->fetchAll(PDO::FETCH_ASSOC);
-
-    // Organize data by product
-    $productData = [];
-    $dates = [];
-    foreach ($dailyData as $row) {
-        if (!in_array($row['sale_date'], $dates)) {
-            $dates[] = $row['sale_date'];
-        }
-        if (!isset($productData[$row['product_name']])) {
-            $productData[$row['product_name']] = [];
-        }
-        $productData[$row['product_name']][$row['sale_date']] = $row['product_subtotal'];
+    $productStmt = $pdo->prepare($productQuery);
+    $productStmt->execute([$startDate, $endDate]);
+    $productData = $productStmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    foreach ($productData as $row) {
+        $chartLabels[] = $row['product_name'];
+        $revenueData[] = floatval($row['total_revenue']);
+        $transactionData[] = intval($row['total_sales']);
     }
 
-    // Fill in missing dates with 0
-    foreach ($productData as $product => $data) {
-        foreach ($dates as $date) {
-            if (!isset($data[$date])) {
-                $productData[$product][$date] = 0;
-            }
-        }
-        ksort($productData[$product]);
+    // Get daily product sales for time series only if we have products
+    $dailyProductData = [];
+    if (!empty($chartLabels)) {
+        $placeholders = str_repeat('?,', count($chartLabels) - 1) . '?';
+        $dailyProductQuery = "
+            SELECT 
+        DATE(s.created_at) as sale_date,
+        p.name as product_name,
+                SUM(si.quantity * si.price) as daily_revenue
+        FROM sales s
+        JOIN sale_items si ON s.id = si.sale_id
+        JOIN products p ON si.product_id = p.id
+            WHERE DATE(s.created_at) BETWEEN ? AND ?
+            AND s.status = 'completed'
+            AND p.name IN ($placeholders)
+        GROUP BY DATE(s.created_at), p.name
+            ORDER BY sale_date ASC, daily_revenue DESC";
+    
+        $params = array_merge([$startDate, $endDate], $chartLabels);
+        $dailyProductStmt = $pdo->prepare($dailyProductQuery);
+        $dailyProductStmt->execute($params);
+        $dailyProductData = $dailyProductStmt->fetchAll(PDO::FETCH_ASSOC);
     }
+
+    // Add debug information
+    error_log("Chart Type: " . $reportType);
+    error_log("Labels: " . json_encode($chartLabels));
+    error_log("Revenue Data: " . json_encode($revenueData));
+    error_log("Transaction Data: " . json_encode($transactionData));
 
     $chartData = [
-        'dates' => array_map(function($date) { return date('M d', strtotime($date)); }, $dates),
-        'products' => $productData,
+        'labels' => $chartLabels,
         'revenues' => $revenueData,
-        'transactions' => $transactionData
+        'transactions' => $transactionData,
+        'dailyData' => $dailyProductData ?? []
     ];
+}
+
+// Check if this is an AJAX request
+$isAjax = !empty($_SERVER['HTTP_X_REQUESTED_WITH']) && 
+          strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) == 'xmlhttprequest';
+
+if ($isAjax) {
+    header('Content-Type: application/json');
+    
+    // Debug information
+    $debug = [
+        'date_range' => $dateRange,
+        'current_period' => [
+            'start' => $startDate,
+            'end' => $endDate,
+            'totals' => $totals
+        ],
+        'previous_period' => [
+            'start' => $prevStartDate,
+            'end' => $prevEndDate,
+            'totals' => $prevTotals
+        ],
+        'growth' => [
+            'sales' => $salesGrowth,
+            'discount' => $discountGrowth,
+            'revenue' => $revenueGrowth,
+            'transactions' => $transactionGrowth
+        ]
+    ];
+
+    // Return JSON response with debug info
+    echo json_encode([
+        'success' => true,
+        'debug' => $debug,
+        'totals' => [
+            'total_sales' => floatval($totals['total_sales']),
+            'total_discount' => floatval($totals['total_discount']),
+            'total_revenue' => floatval($totals['total_revenue']),
+            'total_transactions' => intval($totals['total_transactions'])
+        ],
+        'growth' => [
+            'sales' => floatval($salesGrowth),
+            'discount' => floatval($discountGrowth),
+            'revenue' => floatval($revenueGrowth),
+            'transactions' => floatval($transactionGrowth)
+        ],
+        'periodText' => $periodText,
+        'dateRange' => [
+            'start' => $startDate,
+            'end' => $endDate,
+            'prev_start' => $prevStartDate,
+            'prev_end' => $prevEndDate
+        ],
+        'chartData' => $chartData
+    ]);
+    exit;
 }
 
 ob_start();
@@ -330,7 +468,7 @@ ob_start();
     <!-- Alpine.js -->
     <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
     <!-- Chart.js -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
     <style>
         body {
             font-family: 'Inter', sans-serif;
@@ -649,7 +787,7 @@ ob_start();
                 <form method="GET" id="reportForm" class="filter-bar">
                     <div class="filter-group">
                         <label class="filter-label">Report Type</label>
-                        <select name="report_type" onchange="this.form.submit()" class="filter-select">
+                        <select name="report_type" onchange="updateDashboard({report_type: this.value})" class="filter-select">
                             <option value="sales" <?php echo $reportType === 'sales' ? 'selected' : ''; ?>>Sales Report</option>
                             <option value="products" <?php echo $reportType === 'products' ? 'selected' : ''; ?>>Product Performance</option>
                         </select>
@@ -657,15 +795,20 @@ ob_start();
                     <div class="filter-group">
                         <label class="filter-label">Date Range</label>
                         <select name="date_range" id="dateRange" onchange="handleDateRangeChange(this)" class="filter-select">
+                            <option value="today" <?php echo $dateRange === 'today' ? 'selected' : ''; ?>>Today</option>
+                            <option value="yesterday" <?php echo $dateRange === 'yesterday' ? 'selected' : ''; ?>>Yesterday</option>
                             <option value="week" <?php echo $dateRange === 'week' ? 'selected' : ''; ?>>This Week</option>
                             <option value="month" <?php echo $dateRange === 'month' ? 'selected' : ''; ?>>This Month</option>
+                            <option value="last_month" <?php echo $dateRange === 'last_month' ? 'selected' : ''; ?>>Last Month</option>
                             <option value="quarter" <?php echo $dateRange === 'quarter' ? 'selected' : ''; ?>>This Quarter</option>
-                            <option value="season" <?php echo $dateRange === 'season' ? 'selected' : ''; ?>>This Season</option>
                             <option value="year" <?php echo $dateRange === 'year' ? 'selected' : ''; ?>>This Year</option>
+                            <option value="last_year" <?php echo $dateRange === 'last_year' ? 'selected' : ''; ?>>Last Year</option>
+                            <option value="season" <?php echo $dateRange === 'season' ? 'selected' : ''; ?>>Season</option>
                             <option value="custom" <?php echo $dateRange === 'custom' ? 'selected' : ''; ?>>Custom Range</option>
                         </select>
                     </div>
-                    <!-- Custom Date Range Modal Triggered by JS -->
+                    <input type="hidden" name="start_date" id="hiddenStartDate" value="<?php echo htmlspecialchars($startDate); ?>">
+                    <input type="hidden" name="end_date" id="hiddenEndDate" value="<?php echo htmlspecialchars($endDate); ?>">
                     <div style="flex:1;"></div>
                     <button type="button" class="btn-secondary" onclick="window.location.href=window.location.pathname">Clear Filter</button>
                 </form>
@@ -699,58 +842,60 @@ ob_start();
                         </div>
                                     </div>
                 <!-- Summary Cards -->
-                <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
-                    <div class="bg-white p-6 rounded-lg shadow border border-gray-200">
-                        <div class="flex items-center">
-                            <div class="p-3 rounded-full bg-indigo-100 text-indigo-600">
-                                <i class="fas fa-dollar-sign text-xl"></i>
-                            </div>
-                            <div class="ml-4">
-                                <h3 class="text-sm font-medium text-gray-500">Total Sales</h3>
-                                <p class="text-2xl font-semibold text-gray-900">$<?php echo number_format($totalSubtotal, 2); ?></p>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="bg-white p-6 rounded-lg shadow border border-gray-200">
-                        <div class="flex items-center">
-                            <div class="p-3 rounded-full bg-red-100 text-red-600">
-                                <i class="fas fa-tag text-xl"></i>
-                            </div>
-                            <div class="ml-4">
-                                <h3 class="text-sm font-medium text-gray-500">Total Discount</h3>
-                                <p class="text-2xl font-semibold text-gray-900">$<?php echo number_format($totalDiscount, 2); ?></p>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="bg-white p-6 rounded-lg shadow border border-gray-200">
-                        <div class="flex items-center">
-                            <div class="p-3 rounded-full bg-green-100 text-green-600">
-                                <i class="fas fa-dollar-sign text-xl"></i>
-                            </div>
-                            <div class="ml-4">
-                                <h3 class="text-sm font-medium text-gray-500">Total Revenue</h3>
-                                <p class="text-2xl font-semibold text-gray-900">$<?php echo number_format($totalRevenue, 2); ?></p>
-                            </div>
-                        </div>
-                        <div class="mt-4">
-                            <span class="text-sm <?php echo $growth >= 0 ? 'text-green-600' : 'text-red-600'; ?>">
-                                <i class="fas fa-<?php echo $growth >= 0 ? 'arrow-up' : 'arrow-down'; ?>"></i>
-                                <?php echo abs(round($growth, 1)); ?>% vs last period
-                            </span>
-                        </div>
-                    </div>
-
-                    <div class="bg-white p-6 rounded-lg shadow border border-gray-200">
-                        <div class="flex items-center">
-                            <div class="p-3 rounded-full bg-blue-100 text-blue-600">
+                <div class="summary-cards">
+                    <div class="summary-card">
+                        <div class="flex items-center justify-between w-full mb-4">
+                            <div class="icon text-blue-500 bg-blue-100 rounded-full p-3">
                                 <i class="fas fa-shopping-cart text-xl"></i>
                             </div>
-                            <div class="ml-4">
-                                <h3 class="text-sm font-medium text-gray-500">Total Transactions</h3>
-                                <p class="text-2xl font-semibold text-gray-900"><?php echo number_format($totalTransactions); ?></p>
+                                </div>
+                        <h3 class="text-gray-500 text-sm font-medium mb-2">Total Sales</h3>
+                        <div class="text-2xl font-bold mb-1 total-sales">₱<?= number_format($totals['total_sales'], 2) ?></div>
+                        <div class="text-sm sales-growth">
+                            <i class="fas fa-arrow-<?= $salesGrowth >= 0 ? 'up text-green-500' : 'down text-red-500' ?> mr-1"></i>
+                            <span class="<?= $salesGrowth >= 0 ? 'text-green-500' : 'text-red-500' ?>"><?= abs(round($salesGrowth, 1)) ?>% <?= $periodText ?></span>
+                        </div>
+                    </div>
+
+                    <div class="summary-card">
+                        <div class="flex items-center justify-between w-full mb-4">
+                            <div class="icon text-yellow-500 bg-yellow-100 rounded-full p-3">
+                                <i class="fas fa-tag text-xl"></i>
                             </div>
+                                </div>
+                        <h3 class="text-gray-500 text-sm font-medium mb-2">Total Discount</h3>
+                        <div class="text-2xl font-bold mb-1 total-discount">₱<?= number_format($totals['total_discount'], 2) ?></div>
+                        <div class="text-sm discount-growth">
+                            <i class="fas fa-arrow-<?= $discountGrowth >= 0 ? 'up text-green-500' : 'down text-red-500' ?> mr-1"></i>
+                            <span class="<?= $discountGrowth >= 0 ? 'text-green-500' : 'text-red-500' ?>"><?= abs(round($discountGrowth, 1)) ?>% <?= $periodText ?></span>
+                        </div>
+                    </div>
+
+                    <div class="summary-card">
+                        <div class="flex items-center justify-between w-full mb-4">
+                            <div class="icon text-green-500 bg-green-100 rounded-full p-3">
+                                <i class="fas fa-dollar-sign text-xl"></i>
+                            </div>
+                                </div>
+                        <h3 class="text-gray-500 text-sm font-medium mb-2">Total Revenue</h3>
+                        <div class="text-2xl font-bold mb-1 total-revenue">₱<?= number_format($totals['total_revenue'], 2) ?></div>
+                        <div class="text-sm revenue-growth">
+                            <i class="fas fa-arrow-<?= $revenueGrowth >= 0 ? 'up text-green-500' : 'down text-red-500' ?> mr-1"></i>
+                            <span class="<?= $revenueGrowth >= 0 ? 'text-green-500' : 'text-red-500' ?>"><?= abs(round($revenueGrowth, 1)) ?>% <?= $periodText ?></span>
+                        </div>
+                    </div>
+
+                    <div class="summary-card">
+                        <div class="flex items-center justify-between w-full mb-4">
+                            <div class="icon text-purple-500 bg-purple-100 rounded-full p-3">
+                                <i class="fas fa-receipt text-xl"></i>
+                            </div>
+                                </div>
+                        <h3 class="text-gray-500 text-sm font-medium mb-2">Total Transactions</h3>
+                        <div class="text-2xl font-bold mb-1 total-transactions"><?= number_format($totals['total_transactions']) ?></div>
+                        <div class="text-sm transactions-growth">
+                            <i class="fas fa-arrow-<?= $transactionGrowth >= 0 ? 'up text-green-500' : 'down text-red-500' ?> mr-1"></i>
+                            <span class="<?= $transactionGrowth >= 0 ? 'text-green-500' : 'text-red-500' ?>"><?= abs(round($transactionGrowth, 1)) ?>% <?= $periodText ?></span>
                         </div>
                     </div>
                 </div>
@@ -772,7 +917,7 @@ ob_start();
                         <div style="flex:1;min-height:220px;"><canvas id="timeSeriesChart"></canvas></div>
                                 </div>
                     <div class="chart-card">
-                        <div class="chart-title"><?php echo $reportType === 'sales' ? 'Daily Sales Distribution' : 'Product Performance'; ?></div>
+                        <div class="chart-title"><?php echo $reportType === 'products' ? 'Product Performance' : 'Sales Trend Analysis'; ?></div>
                         <div style="flex:1;min-height:220px;"><canvas id="distributionChart"></canvas></div>
                             </div>
                                     </div>
@@ -797,7 +942,7 @@ ob_start();
                             <table class="detailed-table">
                                 <thead>
                                 <tr>
-                                    <th>Date</th>
+                                        <th>Date & Time</th>
                                     <th>Transaction ID</th>
                                     <th>Subtotal</th>
                                     <th>Discount</th>
@@ -809,45 +954,69 @@ ob_start();
                             </thead>
                                 <tbody>
                                     <?php
-                                    // Get detailed sales data
+                                    // Get detailed sales data with proper date filtering
                                     $detailedQuery = "SELECT 
-                                        DATE(created_at) as sale_date,
-                                        transaction_id,
-                                        subtotal,
-                                        discount_amount,
-                                        tax_amount,
-                                        total_amount,
-                                        payment_method,
-                                        status
-                                        FROM sales 
-                                        WHERE created_at BETWEEN ? AND ?
-                                        ORDER BY created_at DESC";
+                                        s.created_at,
+                                        s.transaction_id,
+                                        s.subtotal,
+                                        s.discount_amount,
+                                        s.tax_amount,
+                                        s.total_amount,
+                                        s.payment_method,
+                                        s.status
+                                        FROM sales s 
+                                        WHERE DATE(s.created_at) BETWEEN :start_date AND :end_date
+                                        ORDER BY s.created_at DESC";
                                     
                                     $detailedStmt = $pdo->prepare($detailedQuery);
-                                    $detailedStmt->execute([$startDate, $endDate]);
+                                    $detailedStmt->execute([
+                                        ':start_date' => $startDate,
+                                        ':end_date' => $endDate
+                                    ]);
                                     $detailedData = $detailedStmt->fetchAll(PDO::FETCH_ASSOC);
                                     
+                                    if (empty($detailedData)): ?>
+                                        <tr>
+                                            <td colspan="8" class="text-center py-4 text-gray-500">No transactions found for the selected period.</td>
+                                        </tr>
+                                    <?php else:
                                     foreach ($detailedData as $row): 
+                                            $status_class = match($row['status']) {
+                                                'completed' => 'bg-green-100 text-green-800',
+                                                'pending' => 'bg-yellow-100 text-yellow-800',
+                                                'cancelled' => 'bg-red-100 text-red-800',
+                                                default => 'bg-gray-100 text-gray-800'
+                                            };
                                     ?>
                                     <tr>
-                                        <td><?php echo date('M d, Y', strtotime($row['sale_date'])); ?></td>
-                                        <td><?php echo htmlspecialchars($row['transaction_id']); ?></td>
-                                        <td>$<?php echo number_format($row['subtotal'], 2); ?></td>
-                                        <td>$<?php echo number_format($row['discount_amount'], 2); ?></td>
-                                        <td>$<?php echo number_format($row['tax_amount'], 2); ?></td>
-                                        <td>$<?php echo number_format($row['total_amount'], 2); ?></td>
-                                        <td><?php echo ucfirst(htmlspecialchars($row['payment_method'])); ?></td>
+                                        <td><?= date('M d, Y h:i A', strtotime($row['created_at'])) ?></td>
+                                        <td><?= htmlspecialchars($row['transaction_id']) ?></td>
+                                        <td>₱<?= number_format($row['subtotal'], 2) ?></td>
+                                        <td>₱<?= number_format($row['discount_amount'], 2) ?></td>
+                                        <td>₱<?= number_format($row['tax_amount'], 2) ?></td>
+                                        <td>₱<?= number_format($row['total_amount'], 2) ?></td>
+                                        <td><?= ucfirst(htmlspecialchars($row['payment_method'])) ?></td>
                                         <td>
-                                            <span class="px-2 py-1 rounded-full text-xs font-medium
-                                                <?php echo $row['status'] === 'completed' ? 'bg-green-100 text-green-800' : 
-                                                    ($row['status'] === 'pending' ? 'bg-yellow-100 text-yellow-800' : 
-                                                    'bg-red-100 text-red-800'); ?>">
-                                                <?php echo ucfirst(htmlspecialchars($row['status'])); ?>
+                                            <span class="px-2 py-1 rounded-full text-xs font-medium <?= $status_class ?>">
+                                                <?= ucfirst(htmlspecialchars($row['status'])) ?>
                                             </span>
                                         </td>
                                     </tr>
-                                    <?php endforeach; ?>
+                                    <?php endforeach; 
+                                    endif; ?>
                                 </tbody>
+                                <?php if (!empty($detailedData)): ?>
+                                <tfoot>
+                                    <tr class="bg-gray-50">
+                                        <td colspan="2" class="font-semibold">Total</td>
+                                        <td class="font-semibold">₱<?= number_format(array_sum(array_column($detailedData, 'subtotal')), 2) ?></td>
+                                        <td class="font-semibold">₱<?= number_format(array_sum(array_column($detailedData, 'discount_amount')), 2) ?></td>
+                                        <td class="font-semibold">₱<?= number_format(array_sum(array_column($detailedData, 'tax_amount')), 2) ?></td>
+                                        <td class="font-semibold">₱<?= number_format(array_sum(array_column($detailedData, 'total_amount')), 2) ?></td>
+                                        <td colspan="2"></td>
+                                    </tr>
+                                </tfoot>
+                                <?php endif; ?>
                             </table>
                         </div>
                     </div>
@@ -857,232 +1026,30 @@ ob_start();
     </div>
 
     <script>
-        // Initialize charts
         document.addEventListener('DOMContentLoaded', function() {
-            // Initialize date inputs with current date range if not set
-            const today = new Date();
-            today.setHours(0, 0, 0, 0);
-            const todayStr = today.toISOString().split('T')[0];
-            
-            const modalStartDate = document.getElementById('modalStartDate');
-            const modalEndDate = document.getElementById('modalEndDate');
-            
-            // Set max date for both inputs to today
-            modalStartDate.setAttribute('max', todayStr);
-            modalEndDate.setAttribute('max', todayStr);
-            
-            // Add event listeners for date inputs
-            modalStartDate.addEventListener('change', function() {
-                const startDate = new Date(this.value);
-                const endDate = new Date(modalEndDate.value);
-                
-                // Reset time to midnight for accurate comparison
-                startDate.setHours(0, 0, 0, 0);
-                
-                // Strict validation for start date
-                if (startDate > today) {
-                    this.value = todayStr;
-                    showDateError('Start date cannot be in the future');
-                    return;
-                }
-                
-                // Update end date constraints
-                if (endDate < startDate) {
-                    modalEndDate.value = this.value;
-                }
-                
-                // Ensure end date is not before start date
-                modalEndDate.min = this.value;
-                hideDateError();
-            });
-
-            modalEndDate.addEventListener('change', function() {
-                const startDate = new Date(modalStartDate.value);
-                const endDate = new Date(this.value);
-                
-                // Reset time to midnight for accurate comparison
-                endDate.setHours(0, 0, 0, 0);
-                
-                // Validate end date
-                if (endDate > today) {
-                    this.value = todayStr;
-                    showDateError('End date cannot be in the future');
-                    return;
-                }
-                
-                hideDateError();
-            });
-
-            // Prepare chart data based on report type
-            <?php
-            $chartLabels = [];
-            $revenueData = [];
-            $transactionData = [];
-
-            if ($reportType === 'sales') {
-                // Get daily sales data for charts with all dates in range
-                $dailyQuery = "
-                    WITH RECURSIVE dates AS (
-                        SELECT ? as date
-                        UNION ALL
-                        SELECT date + INTERVAL 1 DAY
-                        FROM dates
-                        WHERE date < ?
-                    )
-                    SELECT 
-                        DATE(d.date) as sale_date,
-                        COALESCE(COUNT(DISTINCT s.id), 0) as total_transactions,
-                        COALESCE(SUM(s.subtotal), 0) as total_subtotal,
-                        COALESCE(SUM(s.total_amount), 0) as total_amount
-                    FROM dates d
-                    LEFT JOIN sales s ON DATE(s.created_at) = d.date
-                    GROUP BY d.date
-                    ORDER BY d.date ASC";
-                
-                $dailyStmt = $pdo->prepare($dailyQuery);
-                $dailyStmt->execute([$startDate, $endDate]);
-                $dailyData = $dailyStmt->fetchAll(PDO::FETCH_ASSOC);
-
-                foreach ($dailyData as $row) {
-                    $chartLabels[] = date('M d', strtotime($row['sale_date']));
-                    $revenueData[] = $row['total_subtotal'];
-                    $transactionData[] = $row['total_transactions'];
-                }
-            } elseif ($reportType === 'products') {
-                // Sort products by subtotal in descending order
-                usort($reportData, function($a, $b) {
-                    return $b['total_subtotal'] - $a['total_subtotal'];
-                });
-                
-                // Take top 10 products
-                $topProducts = array_slice($reportData, 0, 10);
-                
-                foreach ($topProducts as $row) {
-                    $chartLabels[] = $row['product_name'];
-                    $revenueData[] = $row['total_subtotal'];
-                    $transactionData[] = $row['total_sales'];
-                }
-
-                // For time series chart, get daily data for each product
-                $dailyQuery = "SELECT 
-                    DATE(s.created_at) as sale_date,
-                    p.name as product_name,
-                    SUM(s.subtotal * (si.quantity * si.price) / s.subtotal) as product_subtotal
-                    FROM sales s
-                    JOIN sale_items si ON s.id = si.sale_id
-                    JOIN products p ON si.product_id = p.id
-                    WHERE s.created_at BETWEEN ? AND ?
-                    AND p.id IN (SELECT id FROM products WHERE name IN (" . implode(',', array_fill(0, count($topProducts), '?')) . "))
-                    GROUP BY DATE(s.created_at), p.name
-                    ORDER BY sale_date ASC, p.name";
-                
-                $params = array_merge([$startDate, $endDate], array_column($topProducts, 'product_name'));
-                $dailyStmt = $pdo->prepare($dailyQuery);
-                $dailyStmt->execute($params);
-                $dailyData = $dailyStmt->fetchAll(PDO::FETCH_ASSOC);
-            }
-            ?>
-
-            // Time Series Chart (Sales Trend)
-            const timeSeriesCtx = document.getElementById('timeSeriesChart').getContext('2d');
-            new Chart(timeSeriesCtx, {
-                type: '<?php echo $reportType === 'products' ? 'bar' : 'line'; ?>',
-                data: {
-                    labels: <?php echo json_encode($chartLabels); ?>,
-                    datasets: <?php 
-                        if ($reportType === 'products') {
-                            $colors = [
-                                '#4f46e5',   // Indigo
-                                '#10b981',   // Green
-                                '#f59e0b',   // Yellow
-                                '#ef4444',   // Red
-                                '#3b82f6',   // Blue
-                                '#8b5cf6',   // Purple
-                                '#ec4899',   // Pink
-                                '#14b8a6',   // Teal
-                                '#f97316',   // Orange
-                                '#06b6d4'    // Cyan
-                            ];
-                            $barColors = [];
-                            $i = 0;
-                            foreach ($chartLabels as $label) {
-                                $barColors[] = $colors[$i % count($colors)];
-                                $i++;
-                            }
-                            echo json_encode([
-                                [
-                                    'label' => 'Product Sales',
-                                    'data' => array_values($revenueData),
-                                    'backgroundColor' => $barColors,
-                                    'borderColor' => $barColors,
-                                    'borderWidth' => 2,
-                                    'barPercentage' => 0.7,
-                                    'categoryPercentage' => 0.7
-                                ]
-                            ]);
-                        } else {
-                            echo json_encode([[
-                                'label' => $reportType === 'sales' ? 'Sales Trend (Subtotal)' : 'Sales Trend',
-                                'data' => array_column($dailyData, 'total_subtotal'),
-                                'borderColor' => '#4f46e5',
-                                'backgroundColor' => '#4f46e5',
-                                'tension' => 0.4,
-                                'fill' => false,
-                                'borderWidth' => 2,
-                                'pointRadius' => 6,
-                                'pointHoverRadius' => 8,
-                                'pointBackgroundColor' => '#4f46e5',
-                                'pointBorderColor' => '#fff',
-                                'spanGaps' => true
-                            ]]);
-                        }
-                    ?>
-                },
-                options: {
+            // Chart configuration
+            const commonOptions = {
                     responsive: true,
                     maintainAspectRatio: false,
-                    interaction: {
-                        mode: 'index',
-                        intersect: false
-                    },
                     plugins: {
                         legend: {
-                            display: <?php echo $reportType === 'products' ? 'false' : 'true'; ?>,
-                            position: 'top',
-                            align: 'center',
-                            labels: {
-                                boxWidth: 18,
-                                boxHeight: 18,
-                                padding: 20,
-                                font: {
-                                    size: 16,
-                                    weight: 'bold'
-                                },
-                                usePointStyle: true,
-                                pointStyle: 'circle'
-                            }
+                        display: true,
+                        position: 'top'
                         },
                         tooltip: {
-                            backgroundColor: 'rgba(0, 0, 0, 0.8)',
-                            padding: 12,
-                            titleFont: {
-                                size: 13,
-                                weight: 'bold'
-                            },
-                            bodyFont: {
-                                size: 12
-                            },
+                        mode: 'index',
+                        intersect: false,
                             callbacks: {
                                 label: function(context) {
-                                    let label = context.label || '';
+                                let label = context.dataset.label || '';
                                     if (label) {
                                         label += ': ';
                                     }
                                     if (context.parsed.y !== null) {
-                                        label += new Intl.NumberFormat('en-US', {
-                                            style: 'currency',
-                                            currency: 'USD'
-                                        }).format(context.parsed.y);
+                                    label += '₱' + context.parsed.y.toLocaleString('en-US', {
+                                        minimumFractionDigits: 2,
+                                        maximumFractionDigits: 2
+                                    });
                                     }
                                     return label;
                                 }
@@ -1090,259 +1057,429 @@ ob_start();
                         }
                     },
                     scales: {
-                        x: {
-                            grid: {
-                                display: false
-                            },
-                            ticks: {
-                                maxRotation: 45,
-                                minRotation: 45,
-                                font: {
-                                    size: 13
-                                }
-                            }
-                        },
                         y: {
                             beginAtZero: true,
-                            grid: {
-                                color: 'rgba(0, 0, 0, 0.07)'
-                            },
                             ticks: {
-                                font: {
-                                    size: 13
-                                },
                                 callback: function(value) {
-                                    return '$' + value.toLocaleString();
+                                return '₱' + value.toLocaleString('en-US');
                                 }
                             }
                         }
                     }
-                }
-            });
+            };
+
+            // Prepare chart data
+            const labels = <?php echo json_encode($chartLabels); ?>;
+            const salesData = <?php echo json_encode(array_map('floatval', $revenueData)); ?>;
+            const transactionsData = <?php echo json_encode(array_map('intval', $transactionData)); ?>;
 
             // Revenue Chart
-            const revenueCtx = document.getElementById('revenueChart').getContext('2d');
+            const revenueCtx = document.getElementById('revenueChart');
+            if (revenueCtx) {
             new Chart(revenueCtx, {
-                type: '<?php echo $reportType === 'sales' ? 'line' : 'bar'; ?>',
+                    type: 'line',
                 data: {
-                    labels: <?php echo json_encode($chartLabels); ?>,
+                        labels: labels,
                     datasets: [{
-                        label: '<?php echo $reportType === 'sales' ? 'Sales (Subtotal)' : 'Sales'; ?>',
-                        data: <?php echo json_encode($revenueData); ?>,
+                            label: 'Revenue',
+                            data: salesData,
                         borderColor: '#4f46e5',
                         backgroundColor: 'rgba(79, 70, 229, 0.1)',
-                        tension: 0.4,
                         fill: true
                     }]
                 },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: {
-                            display: false
-                        }
-                    },
-                    scales: {
-                        y: {
-                            beginAtZero: true,
-                            ticks: {
-                                callback: function(value) {
-                                    return '$' + value.toLocaleString();
-                                }
-                            }
-                        }
-                    }
-                }
-            });
+                    options: commonOptions
+                });
+            }
 
             // Transactions Chart
-            const transactionsCtx = document.getElementById('transactionsChart').getContext('2d');
+            const transactionsCtx = document.getElementById('transactionsChart');
+            if (transactionsCtx) {
             new Chart(transactionsCtx, {
                 type: 'bar',
                 data: {
-                    labels: <?php echo json_encode($chartLabels); ?>,
+                        labels: labels,
                     datasets: [{
-                        label: '<?php echo $reportType === 'sales' ? 'Transactions' : 'Sales'; ?>',
-                        data: <?php echo json_encode($transactionData); ?>,
-                        backgroundColor: '#10b981',
-                        borderRadius: 4
+                            label: 'Transactions',
+                            data: transactionsData,
+                            backgroundColor: '#10b981'
                     }]
                 },
                 options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: {
-                            display: false
-                        }
-                    },
+                        ...commonOptions,
                     scales: {
                         y: {
                             beginAtZero: true,
                             ticks: {
-                                stepSize: 1
-                            }
-                        }
-                    }
-                }
-            });
-
-            // Distribution Chart
-            const distributionCtx = document.getElementById('distributionChart').getContext('2d');
-            new Chart(distributionCtx, {
-                type: '<?php echo $reportType === 'products' ? 'pie' : 'bar'; ?>',
-                data: {
-                    labels: <?php echo json_encode($chartLabels); ?>,
-                    datasets: [
-                        {
-                            label: '<?php echo $reportType === 'sales' ? 'Daily Sales (Subtotal)' : 'Product Sales (Subtotal)'; ?>',
-                            data: <?php echo json_encode($revenueData); ?>,
-                            backgroundColor: [
-                                '#4f46e5',   // Indigo
-                                '#10b981',   // Green
-                                '#f59e0b',   // Yellow
-                                '#ef4444',   // Red
-                                '#3b82f6',   // Blue
-                                '#8b5cf6',   // Purple
-                                '#ec4899',   // Pink
-                                '#14b8a6',   // Teal
-                                '#f97316',   // Orange
-                                '#06b6d4'    // Cyan
-                            ],
-                            borderColor: '#fff',
-                            borderWidth: 2
-                        }
-                    ]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: {
-                            display: true,
-                            position: 'top',
-                            align: 'center',
-                            labels: {
-                                boxWidth: 18,
-                                boxHeight: 18,
-                                padding: 20,
-                                font: {
-                                    size: 16,
-                                    weight: 'bold'
-                                },
-                                usePointStyle: true,
-                                pointStyle: 'circle'
-                            }
-                        },
-                        tooltip: {
-                            callbacks: {
-                                label: function(context) {
-                                    let label = context.label || '';
-                                    if (label) {
-                                        label += ': ';
-                                    }
-                                    if (context.parsed !== null) {
-                                        label += new Intl.NumberFormat('en-US', {
-                                            style: 'currency',
-                                            currency: 'USD'
-                                        }).format(context.parsed);
-                                    }
-                                    return label;
+                                callback: function(value) {
+                                        return value.toLocaleString('en-US');
                                 }
                             }
                         }
                     }
                 }
             });
+            }
 
             <?php if ($reportType === 'sales'): ?>
+            // Moving Average Chart
+            const maCtx = document.getElementById('movingAverageChart');
+            if (maCtx) {
+                const movingAverages = salesData.map((val, idx, arr) => {
+                    if (idx < 2) return null;
+                    return (arr[idx] + arr[idx - 1] + arr[idx - 2]) / 3;
+                });
+
+                new Chart(maCtx, {
+                    type: 'line',
+                data: {
+                        labels: labels,
+                        datasets: [{
+                            label: 'Daily Sales',
+                            data: salesData,
+                            borderColor: '#4f46e5',
+                            backgroundColor: 'rgba(79, 70, 229, 0.1)',
+                            fill: true
+                        }, {
+                            label: '3-Day Moving Average',
+                            data: movingAverages,
+                            borderColor: '#10b981',
+                            borderDash: [5, 5],
+                            fill: false
+                        }]
+                    },
+                    options: commonOptions
+                });
+            }
+
             // Forecast Chart
-            const forecastCtx = document.getElementById('forecastChart').getContext('2d');
+            const forecastCtx = document.getElementById('forecastChart');
+            if (forecastCtx) {
+                // Simple linear regression for forecast
+                const xValues = Array.from({length: salesData.length}, (_, i) => i);
+                const xMean = xValues.reduce((a, b) => a + b, 0) / xValues.length;
+                const yMean = salesData.reduce((a, b) => a + b, 0) / salesData.length;
+                
+                const slope = xValues.reduce((sum, x, i) => {
+                    return sum + (x - xMean) * (salesData[i] - yMean);
+                }, 0) / xValues.reduce((sum, x) => sum + Math.pow(x - xMean, 2), 0);
+                
+                const intercept = yMean - slope * xMean;
+                
+                // Generate forecast
+                const futureDays = 3;
+                const forecastDates = Array.from({length: futureDays}, (_, i) => {
+                    const lastDate = new Date(labels[labels.length - 1]);
+                    lastDate.setDate(lastDate.getDate() + i + 1);
+                    return lastDate.toLocaleDateString('en-US', {month: 'short', day: 'numeric'});
+                });
+                
+                const forecast = Array.from({length: futureDays}, (_, i) => {
+                    const x = salesData.length + i;
+                    return Math.max(0, slope * x + intercept);
+                });
+
             new Chart(forecastCtx, {
                 type: 'line',
                 data: {
-                    labels: [...<?php echo json_encode($chartLabels); ?>, 'Forecast 1', 'Forecast 2', 'Forecast 3'],
+                        labels: [...labels, ...forecastDates],
                     datasets: [{
-                        label: 'Actual Sales (Subtotal)',
-                        data: [...<?php echo json_encode(array_column($dailyData, 'total_subtotal')); ?>, null, null, null],
+                            label: 'Actual Sales',
+                            data: [...salesData, ...Array(futureDays).fill(null)],
                         borderColor: '#4f46e5',
                         backgroundColor: 'rgba(79, 70, 229, 0.1)',
-                        tension: 0.4,
                         fill: true
                     }, {
-                        label: 'Sales Forecast',
-                        data: [...Array(<?php echo count($chartLabels); ?>).fill(null), ...<?php echo json_encode(calculateForecast(array_column($dailyData, 'total_subtotal'))); ?>],
+                            label: 'Forecast',
+                            data: [...Array(salesData.length).fill(null), ...forecast],
                         borderColor: '#ef4444',
                         borderDash: [5, 5],
-                        tension: 0.4,
                         fill: false
                     }]
                 },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: {
-                            display: true
-                        }
-                    },
-                    scales: {
-                        y: {
-                            beginAtZero: true,
-                            ticks: {
-                                callback: function(value) {
-                                    return '$' + value.toLocaleString();
-                                }
-                            }
-                        }
-                    }
-                }
-            });
-
-            // Moving Average Chart
-            const movingAverageCtx = document.getElementById('movingAverageChart').getContext('2d');
-            new Chart(movingAverageCtx, {
-                type: 'line',
-                data: {
-                    labels: <?php echo json_encode($chartLabels); ?>,
-                    datasets: [{
-                        label: 'Actual Sales (Subtotal)',
-                        data: <?php echo json_encode(array_column($dailyData, 'total_subtotal')); ?>,
-                        borderColor: '#4f46e5',
-                        backgroundColor: 'rgba(79, 70, 229, 0.1)',
-                        tension: 0.4,
-                        fill: true
-                    }, {
-                        label: '3-Period Moving Average',
-                        data: <?php echo json_encode(calculateMovingAverage(array_column($dailyData, 'total_subtotal'))); ?>,
-                        borderColor: '#10b981',
-                        borderDash: [5, 5],
-                        tension: 0.4,
-                        fill: false
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: {
-                            display: true
-                        }
-                    },
-                    scales: {
-                        y: {
-                            beginAtZero: true,
-                            ticks: {
-                                callback: function(value) {
-                                    return '$' + value.toLocaleString();
-                                }
-                            }
-                        }
-                    }
-                }
-            });
+                    options: commonOptions
+                });
+            }
             <?php endif; ?>
+
+            // Time Series Chart
+            const timeSeriesCtx = document.getElementById('timeSeriesChart');
+            if (timeSeriesCtx) {
+                <?php if ($reportType === 'products'): ?>
+                // For products, create a stacked bar chart
+                const productData = <?php echo json_encode($dailyProductData); ?>;
+                
+                if (productData.length === 0) {
+                    // Display "No data" message when there are no products
+                    new Chart(timeSeriesCtx, {
+                type: 'bar',
+                data: {
+                            labels: ['No Data'],
+                    datasets: [{
+                                label: 'No products found',
+                                data: [0],
+                                backgroundColor: '#cbd5e1'
+                    }]
+                },
+                options: {
+                            ...commonOptions,
+                    plugins: {
+                                ...commonOptions.plugins,
+                                title: {
+                                    display: true,
+                                    text: 'No Product Data Available',
+                                    font: { size: 16, weight: 'bold' }
+                                }
+                            }
+                        }
+                    });
+                } else {
+                    // Get unique dates and format them
+                    const uniqueDates = [...new Set(productData.map(item => item.sale_date))].sort();
+                    const formattedDates = uniqueDates.map(date => {
+                        const [year, month, day] = date.split('-');
+                        return new Date(year, month - 1, day).toLocaleDateString('en-US', {
+                            month: 'short',
+                            day: 'numeric'
+                        });
+                    });
+
+                    // Get unique products
+                    const uniqueProducts = <?php echo json_encode($chartLabels); ?>;
+                    
+                    // Prepare datasets
+                    const datasets = uniqueProducts.map(product => {
+                        const data = uniqueDates.map(date => {
+                            const entry = productData.find(item => item.sale_date === date && item.product_name === product);
+                            return entry ? parseFloat(entry.daily_revenue) : 0;
+                        });
+                        return {
+                            label: product,
+                            data: data,
+                            backgroundColor: getRandomColor(),
+                            borderWidth: 1
+                        };
+                    });
+
+                    new Chart(timeSeriesCtx, {
+                        type: 'bar',
+                        data: {
+                            labels: formattedDates,
+                            datasets: datasets
+                        },
+                        options: {
+                            ...commonOptions,
+                    scales: {
+                                x: {
+                                    stacked: true
+                                },
+                        y: {
+                                    stacked: true,
+                            beginAtZero: true,
+                            ticks: {
+                                        callback: value => '₱' + value.toLocaleString('en-US')
+                                    }
+                                }
+                            },
+                            plugins: {
+                                ...commonOptions.plugins,
+                                title: {
+                                    display: true,
+                                    text: 'Daily Product Sales Distribution',
+                                    font: { size: 16, weight: 'bold' }
+                        }
+                    }
+                }
+            });
+                }
+                <?php else: ?>
+                // Regular time series chart for sales
+                new Chart(timeSeriesCtx, {
+                    type: 'line',
+                data: {
+                        labels: labels,
+                        datasets: [{
+                            label: 'Sales Trend',
+                            data: salesData,
+                            borderColor: '#4f46e5',
+                            backgroundColor: 'rgba(79, 70, 229, 0.1)',
+                            fill: true
+                        }]
+                },
+                options: {
+                        ...commonOptions,
+                    plugins: {
+                            ...commonOptions.plugins,
+                            title: {
+                            display: true,
+                                text: 'Sales Trend Analysis',
+                                font: { size: 16, weight: 'bold' }
+                            }
+                        }
+                    }
+                });
+                <?php endif; ?>
+            }
+
+            // Distribution Chart
+            const distributionCtx = document.getElementById('distributionChart');
+            if (distributionCtx) {
+                <?php if ($reportType === 'products'): ?>
+                // Product Revenue Distribution chart
+                const productLabels = <?php echo json_encode($chartLabels); ?>;
+                const productRevenue = <?php echo json_encode($revenueData); ?>;
+                
+                if (productLabels.length === 0) {
+                    // Display "No data" message when there are no products
+                    new Chart(distributionCtx, {
+                        type: 'bar',
+                        data: {
+                            labels: ['No Data'],
+                            datasets: [{
+                                label: 'No products found',
+                                data: [0],
+                                backgroundColor: '#cbd5e1'
+                            }]
+                        },
+                        options: {
+                            ...commonOptions,
+                            plugins: {
+                                ...commonOptions.plugins,
+                                title: {
+                                    display: true,
+                                    text: 'No Product Data Available',
+                                    font: { size: 16, weight: 'bold' }
+                        }
+                    }
+                }
+            });
+                } else {
+                    // Sort products by revenue
+                    const sortedIndices = productRevenue
+                        .map((value, index) => ({ value, index }))
+                        .sort((a, b) => b.value - a.value)
+                        .map(item => item.index);
+                    
+                    const sortedLabels = sortedIndices.map(i => productLabels[i]);
+                    const sortedRevenue = sortedIndices.map(i => productRevenue[i]);
+                    const colors = sortedLabels.map(() => getRandomColor());
+
+                    new Chart(distributionCtx, {
+                        type: 'bar',
+                data: {
+                            labels: sortedLabels,
+                    datasets: [{
+                                label: 'Product Revenue',
+                                data: sortedRevenue,
+                                backgroundColor: colors,
+                                borderWidth: 1
+                    }]
+                },
+                options: {
+                            ...commonOptions,
+                            indexAxis: 'y',
+                    scales: {
+                                x: {
+                            beginAtZero: true,
+                                    ticks: {
+                                        callback: value => '₱' + value.toLocaleString('en-US')
+                                    }
+                                },
+                                y: {
+                            ticks: {
+                                        font: {
+                                            size: 11
+                                        }
+                                    }
+                                }
+                            },
+                            plugins: {
+                                ...commonOptions.plugins,
+                                title: {
+                                    display: true,
+                                    text: 'Product Revenue Distribution',
+                                    font: { size: 16, weight: 'bold' }
+                                },
+                                tooltip: {
+                                    callbacks: {
+                                        label: function(context) {
+                                            const value = context.raw;
+                                            return 'Revenue: ₱' + value.toLocaleString('en-US', {
+                                                minimumFractionDigits: 2,
+                                                maximumFractionDigits: 2
+                                            });
+                                }
+                            }
+                        }
+                            },
+                            maintainAspectRatio: false,
+                            responsive: true
+                }
+            });
+                }
+                <?php else: ?>
+                // Regular distribution chart for sales
+                const dailyStats = calculateDailyStats(salesData);
+                new Chart(distributionCtx, {
+                    type: 'bar',
+                data: {
+                        labels: labels,
+                    datasets: [{
+                            label: 'Daily Sales',
+                            data: salesData,
+                            backgroundColor: '#10b981',
+                            borderRadius: 4
+                    }, {
+                            label: 'Average',
+                            data: Array(labels.length).fill(dailyStats.average),
+                            type: 'line',
+                            borderColor: '#ef4444',
+                        borderDash: [5, 5],
+                        fill: false
+                    }]
+                },
+                options: {
+                        ...commonOptions,
+                    plugins: {
+                            ...commonOptions.plugins,
+                            title: {
+                                display: true,
+                                text: 'Daily Sales Distribution',
+                                font: { size: 16, weight: 'bold' }
+                            }
+                        }
+                    }
+                });
+                <?php endif; ?>
+            }
+
+            // Helper function to calculate daily statistics
+            function calculateDailyStats(data) {
+                const validData = data.filter(val => val !== null && !isNaN(val));
+                const sum = validData.reduce((a, b) => a + b, 0);
+                const average = sum / validData.length;
+                const sorted = [...validData].sort((a, b) => a - b);
+                const median = sorted.length % 2 === 0 
+                    ? (sorted[sorted.length/2 - 1] + sorted[sorted.length/2]) / 2
+                    : sorted[Math.floor(sorted.length/2)];
+                
+                return {
+                    average,
+                    median,
+                    min: Math.min(...validData),
+                    max: Math.max(...validData)
+                };
+            }
+
+            // Helper function to generate random colors
+            function getRandomColor() {
+                const letters = '0123456789ABCDEF';
+                let color = '#';
+                for (let i = 0; i < 6; i++) {
+                    color += letters[Math.floor(Math.random() * 16)];
+                }
+                return color;
+            }
         });
 
         function showDateError(message) {
@@ -1398,66 +1535,18 @@ ob_start();
             hideDateError();
         };
 
+        // Update hidden fields when custom date is applied
+        function setHiddenDateFields(start, end) {
+            document.getElementById('hiddenStartDate').value = start;
+            document.getElementById('hiddenEndDate').value = end;
+        }
         document.getElementById('customDateForm').onsubmit = function(e) {
             e.preventDefault();
-            
             const start = document.getElementById('modalStartDate').value;
             const end = document.getElementById('modalEndDate').value;
-            
-            // Validate dates
-            if (!start || !end) {
-                showDateError('Both start and end dates are required');
-                return;
-            }
-
-            const startDate = new Date(start);
-            const endDate = new Date(end);
-            const today = new Date();
-            
-            // Reset time to midnight for accurate comparison
-            startDate.setHours(0, 0, 0, 0);
-            endDate.setHours(0, 0, 0, 0);
-            today.setHours(0, 0, 0, 0);
-
-            // Strict validation
-            if (startDate > today) {
-                showDateError('Start date cannot be in the future');
-                return;
-            }
-
-            if (endDate > today) {
-                showDateError('End date cannot be in the future');
-                return;
-            }
-
-            if (startDate > endDate) {
-                showDateError('Start date cannot be after end date');
-                return;
-            }
-
-            // Set values in main form and submit
-            const mainForm = document.getElementById('reportForm');
-            let startInput = mainForm.querySelector('input[name="start_date"]');
-            let endInput = mainForm.querySelector('input[name="end_date"]');
-            
-            if (!startInput) {
-                startInput = document.createElement('input');
-                startInput.type = 'hidden';
-                startInput.name = 'start_date';
-                mainForm.appendChild(startInput);
-            }
-            
-            if (!endInput) {
-                endInput = document.createElement('input');
-                endInput.type = 'hidden';
-                endInput.name = 'end_date';
-                mainForm.appendChild(endInput);
-            }
-            
-            startInput.value = start;
-            endInput.value = end;
-            modal.style.display = 'none';
-            mainForm.submit();
+            setHiddenDateFields(start, end);
+            document.getElementById('customDateModal').style.display = 'none';
+            document.getElementById('reportForm').submit();
         };
 
         // Export functions

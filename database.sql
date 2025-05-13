@@ -68,9 +68,12 @@ CREATE TABLE IF NOT EXISTS sales (
     id INT PRIMARY KEY AUTO_INCREMENT,
     transaction_id VARCHAR(50) UNIQUE NOT NULL,
     user_id INT NOT NULL,
-    total_amount DECIMAL(10,2) NOT NULL,
+    subtotal DECIMAL(10,2) NOT NULL,
+    discount_amount DECIMAL(10,2) NOT NULL DEFAULT 0,
     tax_amount DECIMAL(10,2) NOT NULL,
+    total_amount DECIMAL(10,2) NOT NULL,
     payment_method ENUM('cash', 'card', 'mobile') NOT NULL,
+    status ENUM('completed', 'pending', 'cancelled') NOT NULL DEFAULT 'completed',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id)
 );
@@ -178,22 +181,4 @@ INSERT INTO categories (name, description) VALUES
 ('Beverages', 'Hot and cold drinks'),
 ('Snacks', 'Chips, cookies, and other snacks'),
 ('Groceries', 'Basic grocery items'),
-('Electronics', 'Electronic devices and accessories');
-
-ini_set('display_errors', 0);
-error_reporting(0);
-
-<div id="customDateModal" style="display:none; ...">
-  ...
-</div>
-
-function handleDateRangeChange(select) {
-    if (select.value === 'custom') {
-        document.getElementById('customDateModal').style.display = 'flex';
-        document.getElementById('modalStartDate').value = "<?php echo $startDate; ?>";
-        document.getElementById('modalEndDate').value = "<?php echo $endDate; ?>";
-    } else {
-        document.getElementById('customDateModal').style.display = 'none';
-        select.form.submit();
-    }
-} 
+('Electronics', 'Electronic devices and accessories'); 
