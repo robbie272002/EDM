@@ -1,0 +1,21 @@
+RewriteEngine On
+RewriteBase /
+
+# Set correct MIME types
+AddType text/css .css
+AddType application/javascript .js
+AddType application/json .json
+
+# Allow direct access to assets
+<FilesMatch "\.(css|js|json|png|jpg|jpeg|gif|ico)$">
+    Order Allow,Deny
+    Allow from all
+</FilesMatch>
+
+# Redirect asset requests to the public directory
+RewriteRule ^public/assets/(.*)$ public/assets/$1 [L]
+
+# Redirect all other requests to index.php
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteRule ^ index.php [L] 
