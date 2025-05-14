@@ -6,6 +6,65 @@ namespace Composer\Autoload;
 
 class ComposerStaticInit1ba944b1b2880695113851e981334169
 {
+    public static $prefixLengthsPsr4 = array (
+        'A' => 
+        array (
+            'Amenadiel\\JpGraph\\Util\\' => 23,
+            'Amenadiel\\JpGraph\\Themes\\' => 25,
+            'Amenadiel\\JpGraph\\Text\\' => 23,
+            'Amenadiel\\JpGraph\\Plot\\' => 23,
+            'Amenadiel\\JpGraph\\Image\\' => 24,
+            'Amenadiel\\JpGraph\\Graph\\Tick\\' => 29,
+            'Amenadiel\\JpGraph\\Graph\\Scale\\' => 30,
+            'Amenadiel\\JpGraph\\Graph\\Axis\\' => 29,
+            'Amenadiel\\JpGraph\\Graph\\' => 24,
+            'Amenadiel\\JpGraph\\' => 18,
+        ),
+    );
+
+    public static $prefixDirsPsr4 = array (
+        'Amenadiel\\JpGraph\\Util\\' => 
+        array (
+            0 => __DIR__ . '/..' . '/amenadiel/jpgraph/src/util',
+        ),
+        'Amenadiel\\JpGraph\\Themes\\' => 
+        array (
+            0 => __DIR__ . '/..' . '/amenadiel/jpgraph/src/themes',
+        ),
+        'Amenadiel\\JpGraph\\Text\\' => 
+        array (
+            0 => __DIR__ . '/..' . '/amenadiel/jpgraph/src/text',
+        ),
+        'Amenadiel\\JpGraph\\Plot\\' => 
+        array (
+            0 => __DIR__ . '/..' . '/amenadiel/jpgraph/src/plot',
+        ),
+        'Amenadiel\\JpGraph\\Image\\' => 
+        array (
+            0 => __DIR__ . '/..' . '/amenadiel/jpgraph/src/image',
+        ),
+        'Amenadiel\\JpGraph\\Graph\\Tick\\' => 
+        array (
+            0 => __DIR__ . '/..' . '/amenadiel/jpgraph/src/graph/tick',
+        ),
+        'Amenadiel\\JpGraph\\Graph\\Scale\\' => 
+        array (
+            0 => __DIR__ . '/..' . '/amenadiel/jpgraph/src/graph/scale',
+        ),
+        'Amenadiel\\JpGraph\\Graph\\Axis\\' => 
+        array (
+            0 => __DIR__ . '/..' . '/amenadiel/jpgraph/src/graph/axis',
+        ),
+        'Amenadiel\\JpGraph\\Graph\\' => 
+        array (
+            0 => __DIR__ . '/..' . '/amenadiel/jpgraph/src/graph',
+        ),
+        'Amenadiel\\JpGraph\\' => 
+        array (
+            0 => __DIR__ . '/..' . '/amenadiel/jpgraph/src',
+        ),
+    );
+
     public static $classMap = array (
         'Composer\\InstalledVersions' => __DIR__ . '/..' . '/composer/InstalledVersions.php',
         'Datamatrix' => __DIR__ . '/..' . '/tecnickcom/tcpdf/include/barcodes/datamatrix.php',
@@ -25,6 +84,8 @@ class ComposerStaticInit1ba944b1b2880695113851e981334169
     public static function getInitializer(ClassLoader $loader)
     {
         return \Closure::bind(function () use ($loader) {
+            $loader->prefixLengthsPsr4 = ComposerStaticInit1ba944b1b2880695113851e981334169::$prefixLengthsPsr4;
+            $loader->prefixDirsPsr4 = ComposerStaticInit1ba944b1b2880695113851e981334169::$prefixDirsPsr4;
             $loader->classMap = ComposerStaticInit1ba944b1b2880695113851e981334169::$classMap;
 
         }, null, ClassLoader::class);

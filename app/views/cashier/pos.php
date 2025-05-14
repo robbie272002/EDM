@@ -362,7 +362,11 @@ $jsInitialData = [
                     <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                         <span class="text-gray-500 sm:text-sm">₱</span>
                     </div>
-                    <input type="text" id="cash-amount" class="block w-full pl-7 pr-12 rounded-md border-gray-300 focus:border-indigo-500 focus:ring-indigo-500" placeholder="0.00" onkeyup="validateCashAmount(this)">
+                    <input type="text" 
+                           id="cash-amount" 
+                           class="block w-full h-12 pl-7 pr-12 rounded-md border-gray-300 focus:border-indigo-500 focus:ring-indigo-500" 
+                           placeholder="0.00" 
+                           onkeyup="validateCashAmount(this)">
                 </div>
                 <span id="cash-amount-error" class="text-red-500 text-sm hidden"></span>
             </div>
@@ -407,6 +411,64 @@ $jsInitialData = [
         </div>
     </div>
 </div>
+<!-- Discount Modal -->
+<div id="discount-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
+    <div class="bg-white rounded-lg p-6 w-96">
+        <div class="flex justify-between items-center mb-4">
+            <h3 class="text-lg font-bold">Apply Discount</h3>
+            <button onclick="closeDiscountModal()" class="text-gray-500 hover:text-gray-700">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <div class="space-y-4">
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1 ml-2">Discount Percentage</label>
+                <div class="mt-1 relative rounded-md shadow-sm">
+                    <input type="number" 
+                           id="discount-percentage" 
+                           class="block w-full h-12 pr-12 pl-4 rounded-md border-gray-300 focus:border-indigo-500 focus:ring-indigo-500" 
+                           placeholder="0"
+                           min="0"
+                           max="100"
+                           onkeyup="validateDiscountPercentage(this)">
+                    <div class="absolute inset-y-0 right-0 flex items-center pr-3">
+                        <span class="text-gray-500 sm:text-sm">%</span>
+                    </div>
+                </div>
+                <span id="discount-percentage-error" class="text-red-500 text-sm hidden"></span>
+            </div>
+            <div class="bg-gray-50 p-3 rounded-lg space-y-2">
+                <div class="flex justify-between text-sm">
+                    <span class="text-gray-600">Original Total:</span>
+                    <span>₱<span id="discount-original-total">0.00</span></span>
+                </div>
+                <div class="flex justify-between text-sm">
+                    <span class="text-gray-600">Discount Amount:</span>
+                    <span class="text-red-600">-₱<span id="discount-amount-preview">0.00</span></span>
+                </div>
+                <div class="flex justify-between text-sm font-semibold">
+                    <span>Final Total:</span>
+                    <span>₱<span id="discount-final-total">0.00</span></span>
+                </div>
+            </div>
+        </div>
+        <div class="mt-6">
+            <button onclick="submitDiscount()" class="w-full bg-indigo-600 text-white py-2 px-4 rounded-md hover:bg-indigo-700">Apply Discount</button>
+        </div>
+    </div>
+</div>
+<!-- Toast Notification -->
+<div id="toast-notification" class="fixed top-4 right-4 z-50 transform transition-all duration-300 translate-x-full">
+    <div class="flex items-center p-4 min-w-[320px] rounded-lg shadow-lg">
+        <div class="inline-flex items-center justify-center flex-shrink-0 w-8 h-8 rounded-lg">
+            <i class="fas fa-check text-xl"></i>
+        </div>
+        <div class="ml-3 text-sm font-normal" id="toast-message"></div>
+        <button type="button" class="ml-auto -mx-1.5 -my-1.5 rounded-lg p-1.5 inline-flex items-center justify-center h-8 w-8 hover:bg-gray-100" onclick="hideToast()">
+            <i class="fas fa-times"></i>
+        </button>
+    </div>
+</div>
 <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
 <script>
     // Global variables
@@ -429,7 +491,7 @@ $jsInitialData = [
 
     function processPayment(method, amountTendered = 0, paymentInfo = {}) {
         if (cart.length === 0) {
-            alert('Cart is empty!');
+            showToast('Cart is empty!', 'warning');
             return;
         }
 
@@ -442,7 +504,7 @@ $jsInitialData = [
                 amountTendered = parseFloat(cashInput.value);
             }
             if (isNaN(amountTendered) || amountTendered < total) {
-                alert('Invalid amount or insufficient payment!');
+                showToast('Invalid amount or insufficient payment!', 'error');
                 return;
             }
         }
@@ -516,14 +578,14 @@ $jsInitialData = [
                     if (input) input.value = '';
                 }
 
-                alert('Transaction completed successfully!');
+                showToast('Transaction completed successfully!', 'success');
             } else {
                 throw new Error(data.error || 'Failed to record transaction');
             }
         })
         .catch(error => {
             console.error('Transaction error:', error);
-            alert('Error: ' + error.message + '\nPlease try again or contact admin.');
+            showToast('Error: ' + error.message + '\nPlease try again or contact admin.', 'error');
         });
     }
 
@@ -777,7 +839,7 @@ $jsInitialData = [
     // Payment Processing Functions
     function processCardPayment() {
         if (cart.length === 0) {
-            alert('Cart is empty!');
+            showToast('Cart is empty!', 'warning');
             return;
         }
         currentPaymentMethod = 'card';
@@ -787,7 +849,7 @@ $jsInitialData = [
 
     function processCashPayment() {
         if (cart.length === 0) {
-            alert('Cart is empty!');
+            showToast('Cart is empty!', 'warning');
             return;
         }
         currentPaymentMethod = 'cash';
@@ -801,7 +863,7 @@ $jsInitialData = [
 
     function processMobilePayment() {
         if (cart.length === 0) {
-            alert('Cart is empty!');
+            showToast('Cart is empty!', 'warning');
             return;
         }
         currentPaymentMethod = 'mobile';
@@ -1148,18 +1210,58 @@ $jsInitialData = [
 
     function applyDiscount() {
         if (cart.length === 0) {
-            alert('Cart is empty!');
+            showToast('Cart is empty!', 'warning');
             return;
         }
-        const discount = prompt('Enter discount percentage (0-100):');
-        if (discount === null) return;
-        const discountValue = parseFloat(discount);
-        if (isNaN(discountValue) || discountValue < 0 || discountValue > 100) {
-            alert('Invalid discount percentage!');
+        document.getElementById('discount-modal').classList.remove('hidden');
+        document.getElementById('discount-modal').classList.add('flex');
+        
+        const subtotal = parseFloat(document.getElementById('subtotal').textContent);
+        document.getElementById('discount-original-total').textContent = subtotal.toFixed(2);
+        document.getElementById('discount-percentage').value = '';
+        document.getElementById('discount-amount-preview').textContent = '0.00';
+        document.getElementById('discount-final-total').textContent = subtotal.toFixed(2);
+    }
+
+    function validateDiscountPercentage(input) {
+        const error = document.getElementById('discount-percentage-error');
+        const value = parseFloat(input.value);
+        
+        if (isNaN(value) || value < 0 || value > 100) {
+            error.textContent = 'Please enter a valid percentage between 0 and 100';
+            error.classList.remove('hidden');
+            return false;
+        }
+        
+        error.classList.add('hidden');
+        
+        // Update preview calculations
+        const subtotal = parseFloat(document.getElementById('discount-original-total').textContent);
+        const discountAmount = subtotal * (value / 100);
+        const finalTotal = subtotal - discountAmount;
+        
+        document.getElementById('discount-amount-preview').textContent = discountAmount.toFixed(2);
+        document.getElementById('discount-final-total').textContent = finalTotal.toFixed(2);
+        
+        return true;
+    }
+
+    function submitDiscount() {
+        const input = document.getElementById('discount-percentage');
+        if (!validateDiscountPercentage(input)) {
             return;
         }
-        currentDiscount = discountValue;
+        
+        currentDiscount = parseFloat(input.value);
         updateTotals();
+        closeDiscountModal();
+    }
+
+    function closeDiscountModal() {
+        document.getElementById('discount-modal').classList.add('hidden');
+        document.getElementById('discount-modal').classList.remove('flex');
+        document.getElementById('discount-percentage').value = '';
+        document.getElementById('discount-percentage-error').classList.add('hidden');
     }
 
     // Set current time in header
@@ -1197,14 +1299,20 @@ $jsInitialData = [
 
     // Payment Modal Open/Close Functions
     function processCardPayment() {
-        if (cart.length === 0) { alert('Cart is empty!'); return; }
+        if (cart.length === 0) {
+            showToast('Cart is empty!', 'warning');
+            return;
+        }
         currentPaymentMethod = 'card';
         document.getElementById('card-payment-modal').classList.remove('hidden');
         document.getElementById('card-payment-modal').classList.add('flex');
     }
     
     function processCashPayment() {
-        if (cart.length === 0) { alert('Cart is empty!'); return; }
+        if (cart.length === 0) {
+            showToast('Cart is empty!', 'warning');
+            return;
+        }
         currentPaymentMethod = 'cash';
         document.getElementById('cash-payment-modal').classList.remove('hidden');
         document.getElementById('cash-payment-modal').classList.add('flex');
@@ -1215,7 +1323,10 @@ $jsInitialData = [
     }
     
     function processMobilePayment() {
-        if (cart.length === 0) { alert('Cart is empty!'); return; }
+        if (cart.length === 0) {
+            showToast('Cart is empty!', 'warning');
+            return;
+        }
         currentPaymentMethod = 'mobile';
         document.getElementById('mobile-payment-modal').classList.remove('hidden');
         document.getElementById('mobile-payment-modal').classList.add('flex');
@@ -1264,6 +1375,51 @@ $jsInitialData = [
             processPayment('mobile', 0, paymentInfo);
             closeMobilePaymentModal();
         }
+    }
+
+    function showToast(message, type = 'success') {
+        const toast = document.getElementById('toast-notification');
+        const toastMessage = document.getElementById('toast-message');
+        const icon = toast.querySelector('.fa-check');
+        
+        // Set message
+        toastMessage.textContent = message;
+        
+        // Reset classes
+        toast.querySelector('.flex').className = 'flex items-center p-4 min-w-[320px] rounded-lg shadow-lg';
+        
+        // Apply style based on type
+        switch(type) {
+            case 'success':
+                toast.querySelector('.flex').classList.add('bg-green-100', 'text-green-700');
+                icon.className = 'fas fa-check text-xl text-green-700';
+                break;
+            case 'error':
+                toast.querySelector('.flex').classList.add('bg-red-100', 'text-red-700');
+                icon.className = 'fas fa-times text-xl text-red-700';
+                break;
+            case 'warning':
+                toast.querySelector('.flex').classList.add('bg-yellow-100', 'text-yellow-700');
+                icon.className = 'fas fa-exclamation-triangle text-xl text-yellow-700';
+                break;
+            case 'info':
+                toast.querySelector('.flex').classList.add('bg-blue-100', 'text-blue-700');
+                icon.className = 'fas fa-info-circle text-xl text-blue-700';
+                break;
+        }
+        
+        // Show toast
+        toast.classList.remove('translate-x-full');
+        toast.classList.add('translate-x-0');
+        
+        // Auto hide after 3 seconds
+        setTimeout(hideToast, 3000);
+    }
+    
+    function hideToast() {
+        const toast = document.getElementById('toast-notification');
+        toast.classList.remove('translate-x-0');
+        toast.classList.add('translate-x-full');
     }
 
     (function() {

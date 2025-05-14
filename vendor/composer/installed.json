@@ -1,25 +1,100 @@
 {
     "packages": [
         {
-            "name": "tecnickcom/tcpdf",
-            "version": "6.9.3",
-            "version_normalized": "6.9.3.0",
+            "name": "amenadiel/jpgraph",
+            "version": "v4.1.1",
+            "version_normalized": "4.1.1.0",
             "source": {
                 "type": "git",
-                "url": "https://github.com/tecnickcom/TCPDF.git",
-                "reference": "d0e8dd17f8a1df3c97b94b9af8356e88e811ed59"
+                "url": "https://github.com/HuasoFoundries/jpgraph.git",
+                "reference": "e196d51a520a4182cc26240b4a0744495706f11a"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/tecnickcom/TCPDF/zipball/d0e8dd17f8a1df3c97b94b9af8356e88e811ed59",
-                "reference": "d0e8dd17f8a1df3c97b94b9af8356e88e811ed59",
+                "url": "https://api.github.com/repos/HuasoFoundries/jpgraph/zipball/e196d51a520a4182cc26240b4a0744495706f11a",
+                "reference": "e196d51a520a4182cc26240b4a0744495706f11a",
+                "shasum": ""
+            },
+            "require": {
+                "ext-gd": "*",
+                "php": ">=7.2.0"
+            },
+            "require-dev": {
+                "codeception/codeception": "^4.0",
+                "codeception/module-asserts": "^1.1",
+                "ergebnis/composer-normalize": "^2.13",
+                "ergebnis/php-cs-fixer-config": "^2.13",
+                "kint-php/kint": "^3.3",
+                "monolog/monolog": "^2.0",
+                "overtrue/phplint": "^2.3",
+                "squizlabs/php_codesniffer": "^3.6",
+                "symfony/dotenv": "^4.0 || ^5.0",
+                "symfony/event-dispatcher": "^4.0 || ^5.0",
+                "symfony/yaml": "^4.0 || ^5.0"
+            },
+            "time": "2021-04-27T19:09:11+00:00",
+            "type": "library",
+            "extra": {
+                "version": "4.1.1",
+                "composer-normalize": {
+                    "indent-size": 4,
+                    "indent-style": "space"
+                }
+            },
+            "installation-source": "source",
+            "autoload": {
+                "psr-4": {
+                    "Amenadiel\\JpGraph\\": "src/",
+                    "Amenadiel\\JpGraph\\Plot\\": "src/plot",
+                    "Amenadiel\\JpGraph\\Text\\": "src/text",
+                    "Amenadiel\\JpGraph\\Util\\": "src/util",
+                    "Amenadiel\\JpGraph\\Graph\\": "src/graph",
+                    "Amenadiel\\JpGraph\\Image\\": "src/image",
+                    "Amenadiel\\JpGraph\\Themes\\": "src/themes",
+                    "Amenadiel\\JpGraph\\Graph\\Axis\\": "src/graph/axis",
+                    "Amenadiel\\JpGraph\\Graph\\Tick\\": "src/graph/tick",
+                    "Amenadiel\\JpGraph\\Graph\\Scale\\": "src/graph/scale"
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "QPL-1.0"
+            ],
+            "description": "Composer Friendly, full refactor of JpGraph, library to make graphs and charts",
+            "homepage": "http://jpgraph.net/",
+            "keywords": [
+                "chart",
+                "data",
+                "graph",
+                "jpgraph",
+                "pie"
+            ],
+            "support": {
+                "issues": "https://github.com/huasofoundries/jpgraph/issues",
+                "source": "https://github.com/HuasoFoundries/jpgraph/tree/v4.1.1"
+            },
+            "install-path": "../amenadiel/jpgraph"
+        },
+        {
+            "name": "tecnickcom/tcpdf",
+            "version": "6.9.4",
+            "version_normalized": "6.9.4.0",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/tecnickcom/TCPDF.git",
+                "reference": "c838d7f7babb0d35763acfb9ecf78c3f45966f83"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/tecnickcom/TCPDF/zipball/c838d7f7babb0d35763acfb9ecf78c3f45966f83",
+                "reference": "c838d7f7babb0d35763acfb9ecf78c3f45966f83",
                 "shasum": ""
             },
             "require": {
                 "ext-curl": "*",
                 "php": ">=7.1.0"
             },
-            "time": "2025-04-20T15:52:50+00:00",
+            "time": "2025-05-13T11:34:35+00:00",
             "type": "library",
             "installation-source": "source",
             "autoload": {
@@ -64,11 +139,11 @@
             ],
             "support": {
                 "issues": "https://github.com/tecnickcom/TCPDF/issues",
-                "source": "https://github.com/tecnickcom/TCPDF/tree/6.9.3"
+                "source": "https://github.com/tecnickcom/TCPDF/tree/6.9.4"
             },
             "funding": [
                 {
-                    "url": "https://www.paypal.com/cgi-bin/webscr?cmd=_donations&currency_code=GBP&business=paypal@tecnick.com&item_name=donation%20for%20tcpdf%20project",
+                    "url": "https://www.paypal.com/donate/?hosted_button_id=NZUEC5XS8MFBJ",
                     "type": "custom"
                 }
             ],

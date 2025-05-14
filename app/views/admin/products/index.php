@@ -88,6 +88,10 @@ $categories = $stmt->fetchAll(PDO::FETCH_ASSOC);
             <div class="bg-white rounded-md border border-gray-200 p-4 mb-6">
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div>
+                        <label class="block text-sm font-medium mb-1">Search</label>
+                        <input type="text" id="searchInput" placeholder="Search by product name or SKU..." class="minimal-input w-full">
+                    </div>
+                    <div>
                         <label class="block text-sm font-medium mb-1">Category</label>
                         <select id="categoryFilter" class="minimal-select w-full">
                             <option value="">All Categories</option>
@@ -95,10 +99,6 @@ $categories = $stmt->fetchAll(PDO::FETCH_ASSOC);
                             <option value="<?= $category['id'] ?>"><?= htmlspecialchars($category['name']) ?></option>
                             <?php endforeach; ?>
                         </select>
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium mb-1">Search</label>
-                        <input type="text" id="searchInput" placeholder="Search products..." class="minimal-input w-full">
                     </div>
                     <div>
                         <label class="block text-sm font-medium mb-1">Sort By</label>
@@ -127,7 +127,7 @@ $categories = $stmt->fetchAll(PDO::FETCH_ASSOC);
                         </thead>
                         <tbody class="bg-white">
                             <?php foreach ($products as $product): ?>
-                            <tr>
+                            <tr data-category-id="<?= $product['category_id'] ?>">
                                 <td class="px-4 py-2 whitespace-nowrap">
                                     <div class="flex items-center">
                                         <img class="minimal-img" 
@@ -224,7 +224,7 @@ $categories = $stmt->fetchAll(PDO::FETCH_ASSOC);
                     </div>
                     <div>
                         <label class="block text-base font-medium text-gray-700 mb-1">Price</label>
-                        <input type="number" name="price" step="0.01" required class="block w-full rounded-lg border border-gray-300 px-4 py-2 text-gray-700 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 transition">
+                        <input type="number" name="price" step="0.01" min="0" required class="block w-full rounded-lg border border-gray-300 px-4 py-2 text-gray-700 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 transition">
                     </div>
                 </div>
                 <div class="mt-8 flex justify-end gap-3">
@@ -296,7 +296,7 @@ $categories = $stmt->fetchAll(PDO::FETCH_ASSOC);
                     </div>
                     <div>
                         <label class="block text-base font-medium text-gray-700 mb-1">Price</label>
-                        <input type="number" name="price" step="0.01" value="<?= $product['price'] ?>" required class="block w-full rounded-lg border border-gray-300 px-4 py-2 text-gray-700 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 transition">
+                        <input type="number" name="price" step="0.01" min="0" value="<?= $product['price'] ?>" required class="block w-full rounded-lg border border-gray-300 px-4 py-2 text-gray-700 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 transition">
                     </div>
                 </div>
                 <div class="mt-8 flex justify-end gap-3">
@@ -341,22 +341,76 @@ $categories = $stmt->fetchAll(PDO::FETCH_ASSOC);
 function previewImage(input) {
     const preview = document.getElementById('imagePreview');
     const placeholder = document.getElementById('uploadPlaceholder');
+    const errorMsg = document.getElementById('imageError');
+    
+    // Clear previous error
+    if (errorMsg) errorMsg.remove();
     
     if (input.files && input.files[0]) {
-        const reader = new FileReader();
+        const file = input.files[0];
         
+        // Validate file type
+        const validTypes = ['image/jpeg', 'image/png', 'image/gif'];
+        if (!validTypes.includes(file.type)) {
+            showImageError('Please select a valid image file (JPG, PNG, or GIF)');
+            input.value = '';
+            return;
+        }
+        
+        // Validate file size (2MB max)
+        const maxSize = 2 * 1024 * 1024; // 2MB in bytes
+        if (file.size > maxSize) {
+            showImageError('Image size should be less than 2MB');
+            input.value = '';
+            return;
+        }
+        
+        // Preview valid image
+        const reader = new FileReader();
         reader.onload = function(e) {
             preview.src = e.target.result;
             preview.classList.remove('hidden');
             placeholder.classList.add('hidden');
-        }
-        
-        reader.readAsDataURL(input.files[0]);
+        };
+        reader.readAsDataURL(file);
     } else {
         preview.classList.add('hidden');
         placeholder.classList.remove('hidden');
     }
 }
+
+function showImageError(message) {
+    // Remove any existing error message
+    const existingError = document.getElementById('imageError');
+    if (existingError) existingError.remove();
+    
+    // Create and show new error message
+    const errorDiv = document.createElement('div');
+    errorDiv.id = 'imageError';
+    errorDiv.className = 'mt-2 text-sm text-red-600';
+    errorDiv.innerHTML = `<i class="fas fa-exclamation-circle mr-1"></i>${message}`;
+    
+    // Insert error message after the image upload section
+    const uploadSection = document.querySelector('.flex.items-center.gap-6');
+    uploadSection.parentNode.insertBefore(errorDiv, uploadSection.nextSibling);
+    
+    // Reset preview
+    const preview = document.getElementById('imagePreview');
+    const placeholder = document.getElementById('uploadPlaceholder');
+    preview.classList.add('hidden');
+    placeholder.classList.remove('hidden');
+}
+
+// Add form validation before submit
+document.querySelector('form[action="add_product.php"]').addEventListener('submit', function(e) {
+    const imageInput = document.getElementById('imageInput');
+    if (imageInput.files.length === 0) {
+        e.preventDefault();
+        showImageError('Please select a product image');
+        return false;
+    }
+    return true;
+});
 
 function previewEditImage(input, productId) {
     const preview = document.getElementById('editImagePreview' + productId);
@@ -394,9 +448,10 @@ document.addEventListener('DOMContentLoaded', function() {
         // Filter rows
         rows.forEach(row => {
             const name = row.querySelector('td:first-child').textContent.toLowerCase();
-            const category = row.querySelector('td:nth-child(2)').textContent.trim();
-            const matchesSearch = name.includes(searchTerm);
-            const matchesCategory = !categoryValue || row.querySelector('td:nth-child(2)').textContent.includes(categoryValue);
+            const sku = row.querySelector('td:nth-child(3)').textContent.toLowerCase();
+            const categoryCell = row.querySelector('td:nth-child(2)');
+            const matchesSearch = name.includes(searchTerm) || sku.includes(searchTerm);
+            const matchesCategory = !categoryValue || categoryCell.closest('tr').getAttribute('data-category-id') === categoryValue;
 
             row.style.display = matchesSearch && matchesCategory ? '' : 'none';
         });

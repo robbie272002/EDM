@@ -25,14 +25,17 @@ function checkAuth($requiredRole = null) {
     }
     
     if ($requiredRole && $_SESSION['role'] !== $requiredRole) {
-        error_log("Role mismatch. User role: {$_SESSION['role']}, Required: $requiredRole");
-        if ($isAjax) {
-            header('Content-Type: application/json');
-            echo json_encode(['success' => false, 'message' => 'Unauthorized access']);
-            exit;
-        } else {
-            header('Location: /index.php');
-            exit;
+        // Allow super_admin to access admin pages
+        if (!($requiredRole === 'admin' && $_SESSION['role'] === 'super_admin')) {
+            error_log("Role mismatch. User role: {$_SESSION['role']}, Required: $requiredRole");
+            if ($isAjax) {
+                header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'message' => 'Unauthorized access']);
+                exit;
+            } else {
+                header('Location: /index.php');
+                exit;
+            }
         }
     }
     

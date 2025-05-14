@@ -16,7 +16,11 @@
         </a>
         <a href="transaction-history.php" class="flex items-center space-x-3 p-3 rounded-lg hover:bg-indigo-50 transition font-medium text-gray-700 <?php echo basename($_SERVER['PHP_SELF']) === 'transaction-history.php' ? 'bg-indigo-100' : ''; ?>">
             <i class="fas fa-history w-6 text-indigo-600"></i>
-            <span>Audit Logs</span>
+            <span>Transaction</span>
+        </a>
+        <a href="activity-logs.php" class="flex items-center space-x-3 p-3 rounded-lg hover:bg-indigo-50 transition font-medium text-gray-700 <?php echo basename($_SERVER['PHP_SELF']) === 'activity-logs.php' ? 'bg-indigo-100' : ''; ?>">
+            <i class="fas fa-clipboard-list w-6 text-indigo-600"></i>
+            <span>Activity Logs</span>
         </a>
     </nav>
     <div class="mt-auto w-full p-4 border-t border-gray-100">

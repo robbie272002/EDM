@@ -12,7 +12,14 @@ function isLoggedIn() {
  * Check if user is admin
  */
 function isAdmin() {
-    return isset($_SESSION['role']) && $_SESSION['role'] === 'admin';
+    return isset($_SESSION['role']) && ($_SESSION['role'] === 'admin' || $_SESSION['role'] === 'super_admin');
+}
+
+/**
+ * Check if user is super admin
+ */
+function isSuperAdmin() {
+    return isset($_SESSION['role']) && $_SESSION['role'] === 'super_admin';
 }
 
 /**

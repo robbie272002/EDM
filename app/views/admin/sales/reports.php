@@ -18,16 +18,16 @@ $endDate = $_GET['end_date'] ?? $lastDayOfMonth;
 // Handle predefined date ranges
 switch ($dateRange) {
     case 'today':
-        $startDate = date('Y-m-d');
-        $endDate = date('Y-m-d');
-        $prevStartDate = date('Y-m-d', strtotime('-1 day'));
-        $prevEndDate = $prevStartDate;
+        $startDate = date('Y-m-d 00:00:00');
+        $endDate = date('Y-m-d 23:59:59');
+        $prevStartDate = date('Y-m-d 00:00:00', strtotime('-1 day'));
+        $prevEndDate = date('Y-m-d 23:59:59', strtotime('-1 day'));
         break;
     case 'yesterday':
-        $startDate = date('Y-m-d', strtotime('-1 day'));
-        $endDate = date('Y-m-d', strtotime('-1 day'));
-        $prevStartDate = date('Y-m-d', strtotime('-2 days'));
-        $prevEndDate = $prevStartDate;
+        $startDate = date('Y-m-d 00:00:00', strtotime('-1 day'));
+        $endDate = date('Y-m-d 23:59:59', strtotime('-1 day'));
+        $prevStartDate = date('Y-m-d 00:00:00', strtotime('-2 days'));
+        $prevEndDate = date('Y-m-d 23:59:59', strtotime('-2 days'));
         break;
     case 'week':
         $startDate = date('Y-m-d', strtotime('monday this week'));
@@ -136,14 +136,16 @@ switch ($reportType) {
                     COUNT(DISTINCT s.id) as total_sales,
                     SUM(si.quantity) as total_quantity,
                     SUM(si.quantity * si.price) as total_subtotal,
-                    AVG(si.price) as avg_sale_price
+                    AVG(si.price) as avg_sale_price,
+                    SUM(si.quantity * si.price) as total_revenue
                   FROM sales s
                   JOIN sale_items si ON s.id = si.sale_id
                   JOIN products p ON si.product_id = p.id
                   JOIN categories c ON p.category_id = c.id
-                  WHERE s.created_at BETWEEN ? AND ?
+                  WHERE s.created_at >= ? AND s.created_at <= ?
                   GROUP BY p.id, p.name, c.name
-                  ORDER BY total_subtotal DESC";
+                  ORDER BY total_revenue DESC
+                  LIMIT 10";
         break;
     default: // sales
         $query = "SELECT 
@@ -155,7 +157,7 @@ switch ($reportType) {
                     COUNT(DISTINCT si.product_id) as unique_products
                   FROM sales s 
                   LEFT JOIN sale_items si ON s.id = si.sale_id
-                  WHERE s.created_at BETWEEN ? AND ?
+                  WHERE s.created_at >= ? AND s.created_at <= ?
                   GROUP BY DATE(s.created_at)
                   ORDER BY sale_date ASC";
 }
@@ -172,8 +174,7 @@ $stmt = $pdo->prepare("
         COALESCE(SUM(total_amount), 0) as total_revenue,
         COUNT(DISTINCT id) as total_transactions
     FROM sales 
-    WHERE DATE(created_at) BETWEEN ? AND ?
-    AND status = 'completed'
+    WHERE created_at >= ? AND created_at <= ?
 ");
 
 $currentPeriodParams = [$startDate, $endDate];
@@ -188,8 +189,7 @@ $stmt = $pdo->prepare("
         COALESCE(SUM(total_amount), 0) as prev_total_revenue,
         COUNT(DISTINCT id) as prev_total_transactions
     FROM sales 
-    WHERE DATE(created_at) BETWEEN ? AND ?
-    AND status = 'completed'
+    WHERE created_at >= ? AND created_at <= ?
 ");
 
 $prevPeriodParams = [$prevStartDate, $prevEndDate];
@@ -757,7 +757,30 @@ ob_start();
         }
     </style>
 </head>
-<body class="bg-gray-50">
+<body class="bg-gray-50" x-data="{ 
+    showDateModal: false,
+    dateError: '',
+    hasVisibleData: true,
+    
+    init() {
+        this.$nextTick(() => {
+            this.checkVisibleData();
+        });
+    },
+
+    checkVisibleData() {
+        const rows = document.querySelectorAll('tbody tr');
+        let visibleCount = 0;
+        
+        rows.forEach(row => {
+            if (row.style.display !== 'none') {
+                visibleCount++;
+            }
+        });
+
+        this.hasVisibleData = visibleCount > 0;
+    }
+}">
     <div class="min-h-screen flex">
         <!-- Sidebar -->
         <div class="fixed inset-y-0 left-0 w-64 bg-white shadow-lg">
@@ -937,7 +960,6 @@ ob_start();
                         <!-- Detailed Data Table -->
                 <div class="section-title">Detailed Data</div>
                 <div class="detailed-table-container">
-                    <div class="p-0">
                     <div class="overflow-x-auto">
                             <table class="detailed-table">
                                 <thead>
@@ -953,57 +975,139 @@ ob_start();
                                 </tr>
                             </thead>
                                 <tbody>
-                                    <?php
-                                    // Get detailed sales data with proper date filtering
-                                    $detailedQuery = "SELECT 
-                                        s.created_at,
-                                        s.transaction_id,
-                                        s.subtotal,
-                                        s.discount_amount,
-                                        s.tax_amount,
-                                        s.total_amount,
-                                        s.payment_method,
-                                        s.status
-                                        FROM sales s 
-                                        WHERE DATE(s.created_at) BETWEEN :start_date AND :end_date
-                                        ORDER BY s.created_at DESC";
-                                    
-                                    $detailedStmt = $pdo->prepare($detailedQuery);
-                                    $detailedStmt->execute([
-                                        ':start_date' => $startDate,
-                                        ':end_date' => $endDate
-                                    ]);
-                                    $detailedData = $detailedStmt->fetchAll(PDO::FETCH_ASSOC);
-                                    
-                                    if (empty($detailedData)): ?>
-                                        <tr>
-                                            <td colspan="8" class="text-center py-4 text-gray-500">No transactions found for the selected period.</td>
-                                        </tr>
-                                    <?php else:
-                                    foreach ($detailedData as $row): 
-                                            $status_class = match($row['status']) {
-                                                'completed' => 'bg-green-100 text-green-800',
-                                                'pending' => 'bg-yellow-100 text-yellow-800',
-                                                'cancelled' => 'bg-red-100 text-red-800',
-                                                default => 'bg-gray-100 text-gray-800'
-                                            };
-                                    ?>
-                                    <tr>
-                                        <td><?= date('M d, Y h:i A', strtotime($row['created_at'])) ?></td>
-                                        <td><?= htmlspecialchars($row['transaction_id']) ?></td>
-                                        <td>₱<?= number_format($row['subtotal'], 2) ?></td>
-                                        <td>₱<?= number_format($row['discount_amount'], 2) ?></td>
-                                        <td>₱<?= number_format($row['tax_amount'], 2) ?></td>
-                                        <td>₱<?= number_format($row['total_amount'], 2) ?></td>
-                                        <td><?= ucfirst(htmlspecialchars($row['payment_method'])) ?></td>
-                                        <td>
-                                            <span class="px-2 py-1 rounded-full text-xs font-medium <?= $status_class ?>">
-                                                <?= ucfirst(htmlspecialchars($row['status'])) ?>
-                                            </span>
-                                        </td>
-                                    </tr>
-                                    <?php endforeach; 
-                                    endif; ?>
+                                    <?php if ($reportType === 'products'): ?>
+                                        <?php if (empty($reportData)): ?>
+                                            <tr>
+                                                <td colspan="8" class="text-center py-12">
+                                                    <div class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-gray-100 mb-4">
+                                                        <i class="fas fa-box text-gray-400 text-2xl"></i>
+                                                    </div>
+                                                    <h3 class="text-lg font-medium text-gray-900 mb-2">No Product Data Found</h3>
+                                                    <p class="text-sm text-gray-600">
+                                                        No product sales data is available for the selected date range.
+                                                    </p>
+                                                </td>
+                                            </tr>
+                                        <?php else: ?>
+                                            <?php
+                                            // Get detailed sales data with proper date filtering
+                                            $detailedQuery = "SELECT 
+                                                s.created_at,
+                                                s.transaction_id,
+                                                s.subtotal,
+                                                s.discount_amount,
+                                                s.tax_amount,
+                                                s.total_amount,
+                                                s.payment_method,
+                                                s.status
+                                                FROM sales s 
+                                                WHERE DATE(s.created_at) BETWEEN :start_date AND :end_date
+                                                ORDER BY s.created_at DESC";
+                                            
+                                            $detailedStmt = $pdo->prepare($detailedQuery);
+                                            $detailedStmt->execute([
+                                                ':start_date' => $startDate,
+                                                ':end_date' => $endDate
+                                            ]);
+                                            $detailedData = $detailedStmt->fetchAll(PDO::FETCH_ASSOC);
+                                            
+                                            if (empty($detailedData)): ?>
+                                                <tr>
+                                                    <td colspan="8" class="text-center py-4 text-gray-500">No transactions found for the selected period.</td>
+                                                </tr>
+                                            <?php else:
+                                            foreach ($detailedData as $row): 
+                                                    $status_class = match($row['status']) {
+                                                        'completed' => 'bg-green-100 text-green-800',
+                                                        'pending' => 'bg-yellow-100 text-yellow-800',
+                                                        'cancelled' => 'bg-red-100 text-red-800',
+                                                        default => 'bg-gray-100 text-gray-800'
+                                                    };
+                                            ?>
+                                            <tr>
+                                                <td><?= date('M d, Y h:i A', strtotime($row['created_at'])) ?></td>
+                                                <td><?= htmlspecialchars($row['transaction_id']) ?></td>
+                                                <td>₱<?= number_format($row['subtotal'], 2) ?></td>
+                                                <td>₱<?= number_format($row['discount_amount'], 2) ?></td>
+                                                <td>₱<?= number_format($row['tax_amount'], 2) ?></td>
+                                                <td>₱<?= number_format($row['total_amount'], 2) ?></td>
+                                                <td><?= ucfirst(htmlspecialchars($row['payment_method'])) ?></td>
+                                                <td>
+                                                    <span class="px-2 py-1 rounded-full text-xs font-medium <?= $status_class ?>">
+                                                        <?= ucfirst(htmlspecialchars($row['status'])) ?>
+                                                    </span>
+                                                </td>
+                                            </tr>
+                                            <?php endforeach; 
+                                            endif; ?>
+                                        <?php endif; ?>
+                                    <?php else: ?>
+                                        <?php if (empty($reportData)): ?>
+                                            <tr>
+                                                <td colspan="8" class="text-center py-12">
+                                                    <div class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-gray-100 mb-4">
+                                                        <i class="fas fa-chart-line text-gray-400 text-2xl"></i>
+                                                    </div>
+                                                    <h3 class="text-lg font-medium text-gray-900 mb-2">No Sales Data Found</h3>
+                                                    <p class="text-sm text-gray-600">
+                                                        No sales data is available for the selected date range.
+                                                    </p>
+                                                </td>
+                                            </tr>
+                                        <?php else: ?>
+                                            <?php
+                                            // Get detailed sales data with proper date filtering
+                                            $detailedQuery = "SELECT 
+                                                s.created_at,
+                                                s.transaction_id,
+                                                s.subtotal,
+                                                s.discount_amount,
+                                                s.tax_amount,
+                                                s.total_amount,
+                                                s.payment_method,
+                                                s.status
+                                                FROM sales s 
+                                                WHERE DATE(s.created_at) BETWEEN :start_date AND :end_date
+                                                ORDER BY s.created_at DESC";
+                                            
+                                            $detailedStmt = $pdo->prepare($detailedQuery);
+                                            $detailedStmt->execute([
+                                                ':start_date' => $startDate,
+                                                ':end_date' => $endDate
+                                            ]);
+                                            $detailedData = $detailedStmt->fetchAll(PDO::FETCH_ASSOC);
+                                            
+                                            if (empty($detailedData)): ?>
+                                                <tr>
+                                                    <td colspan="8" class="text-center py-4 text-gray-500">No transactions found for the selected period.</td>
+                                                </tr>
+                                            <?php else:
+                                            foreach ($detailedData as $row): 
+                                                    $status_class = match($row['status']) {
+                                                        'completed' => 'bg-green-100 text-green-800',
+                                                        'pending' => 'bg-yellow-100 text-yellow-800',
+                                                        'cancelled' => 'bg-red-100 text-red-800',
+                                                        default => 'bg-gray-100 text-gray-800'
+                                                    };
+                                            ?>
+                                            <tr>
+                                                <td><?= date('M d, Y h:i A', strtotime($row['created_at'])) ?></td>
+                                                <td><?= htmlspecialchars($row['transaction_id']) ?></td>
+                                                <td>₱<?= number_format($row['subtotal'], 2) ?></td>
+                                                <td>₱<?= number_format($row['discount_amount'], 2) ?></td>
+                                                <td>₱<?= number_format($row['tax_amount'], 2) ?></td>
+                                                <td>₱<?= number_format($row['total_amount'], 2) ?></td>
+                                                <td><?= ucfirst(htmlspecialchars($row['payment_method'])) ?></td>
+                                                <td>
+                                                    <span class="px-2 py-1 rounded-full text-xs font-medium <?= $status_class ?>">
+                                                        <?= ucfirst(htmlspecialchars($row['status'])) ?>
+                                                    </span>
+                                                </td>
+                                            </tr>
+                                            <?php endforeach; 
+                                            endif; ?>
+                                        <?php endif; ?>
+                                    <?php endif; ?>
                                 </tbody>
                                 <?php if (!empty($detailedData)): ?>
                                 <tfoot>
@@ -1018,6 +1122,23 @@ ob_start();
                                 </tfoot>
                                 <?php endif; ?>
                             </table>
+
+                            <!-- No Results Message -->
+                            <div x-show="!hasVisibleData" 
+                                 x-cloak
+                                 class="py-12 text-center bg-gray-50 rounded-lg border-t">
+                                <div class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-gray-100 mb-4">
+                                    <i class="fas <?= $reportType === 'products' ? 'fa-box' : 'fa-chart-line' ?> text-gray-400 text-2xl"></i>
+                                </div>
+                                <h3 class="text-lg font-medium text-gray-900 mb-2">
+                                    <?= $reportType === 'products' ? 'No Product Data Found' : 'No Sales Data Found' ?>
+                                </h3>
+                                <p class="text-sm text-gray-600">
+                                    <?= $reportType === 'products' 
+                                        ? 'No product sales data is available for the selected date range.'
+                                        : 'No sales data is available for the selected date range.' ?>
+                                </p>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -1326,97 +1447,86 @@ ob_start();
             if (distributionCtx) {
                 <?php if ($reportType === 'products'): ?>
                 // Product Revenue Distribution chart
-                const productLabels = <?php echo json_encode($chartLabels); ?>;
-                const productRevenue = <?php echo json_encode($revenueData); ?>;
-                
-                if (productLabels.length === 0) {
-                    // Display "No data" message when there are no products
-                    new Chart(distributionCtx, {
-                        type: 'bar',
-                        data: {
-                            labels: ['No Data'],
-                            datasets: [{
-                                label: 'No products found',
-                                data: [0],
-                                backgroundColor: '#cbd5e1'
-                            }]
+                const productData = <?php echo json_encode($reportData); ?>;
+                const productLabels = productData.map(item => item.product_name);
+                const productRevenue = productData.map(item => parseFloat(item.total_revenue));
+                const productQuantities = productData.map(item => parseInt(item.total_quantity));
+
+                // Create the product performance chart
+                new Chart(distributionCtx, {
+                    type: 'bar',
+                    data: {
+                        labels: productLabels,
+                        datasets: [{
+                            label: 'Revenue',
+                            data: productRevenue,
+                            backgroundColor: '#4F46E5',
+                            yAxisID: 'y',
+                            order: 1
+                        }, {
+                            label: 'Quantity Sold',
+                            data: productQuantities,
+                            backgroundColor: '#10B981',
+                            yAxisID: 'y1',
+                            type: 'line',
+                            order: 0
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        interaction: {
+                            mode: 'index',
+                            intersect: false,
                         },
-                        options: {
-                            ...commonOptions,
-                            plugins: {
-                                ...commonOptions.plugins,
+                        scales: {
+                            y: {
+                                type: 'linear',
+                                display: true,
+                                position: 'left',
                                 title: {
                                     display: true,
-                                    text: 'No Product Data Available',
-                                    font: { size: 16, weight: 'bold' }
-                        }
-                    }
-                }
-            });
-                } else {
-                    // Sort products by revenue
-                    const sortedIndices = productRevenue
-                        .map((value, index) => ({ value, index }))
-                        .sort((a, b) => b.value - a.value)
-                        .map(item => item.index);
-                    
-                    const sortedLabels = sortedIndices.map(i => productLabels[i]);
-                    const sortedRevenue = sortedIndices.map(i => productRevenue[i]);
-                    const colors = sortedLabels.map(() => getRandomColor());
-
-                    new Chart(distributionCtx, {
-                        type: 'bar',
-                data: {
-                            labels: sortedLabels,
-                    datasets: [{
-                                label: 'Product Revenue',
-                                data: sortedRevenue,
-                                backgroundColor: colors,
-                                borderWidth: 1
-                    }]
-                },
-                options: {
-                            ...commonOptions,
-                            indexAxis: 'y',
-                    scales: {
-                                x: {
-                            beginAtZero: true,
-                                    ticks: {
-                                        callback: value => '₱' + value.toLocaleString('en-US')
-                                    }
+                                    text: 'Revenue (₱)'
                                 },
-                                y: {
-                            ticks: {
-                                        font: {
-                                            size: 11
-                                        }
+                                ticks: {
+                                    callback: function(value) {
+                                        return '₱' + value.toLocaleString();
                                     }
                                 }
                             },
-                            plugins: {
-                                ...commonOptions.plugins,
+                            y1: {
+                                type: 'linear',
+                                display: true,
+                                position: 'right',
                                 title: {
                                     display: true,
-                                    text: 'Product Revenue Distribution',
-                                    font: { size: 16, weight: 'bold' }
+                                    text: 'Quantity Sold'
                                 },
-                                tooltip: {
-                                    callbacks: {
-                                        label: function(context) {
-                                            const value = context.raw;
-                                            return 'Revenue: ₱' + value.toLocaleString('en-US', {
-                                                minimumFractionDigits: 2,
-                                                maximumFractionDigits: 2
-                                            });
+                                grid: {
+                                    drawOnChartArea: false
+                                }
+                            }
+                        },
+                        plugins: {
+                            title: {
+                                display: true,
+                                text: 'Product Performance Analysis',
+                                font: { size: 16, weight: 'bold' }
+                            },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(context) {
+                                        const label = context.dataset.label || '';
+                                        const value = context.parsed.y;
+                                        if (label === 'Revenue') {
+                                            return label + ': ₱' + value.toLocaleString();
+                                        }
+                                        return label + ': ' + value.toLocaleString();
+                                    }
                                 }
                             }
                         }
-                            },
-                            maintainAspectRatio: false,
-                            responsive: true
-                }
-            });
-                }
+                    }
+                });
                 <?php else: ?>
                 // Regular distribution chart for sales
                 const dailyStats = calculateDailyStats(salesData);
@@ -1517,10 +1627,31 @@ ob_start();
             modalStartDate.value = "<?php echo $startDate; ?>";
             modalEndDate.value = "<?php echo $endDate; ?>";
             
-            // Set constraints
+            // Set initial constraints
             modalStartDate.max = todayStr;
             modalEndDate.max = todayStr;
-            modalEndDate.min = modalStartDate.value;
+            
+            // Add event listener for start date changes
+            modalStartDate.addEventListener('change', function() {
+                // Update end date minimum when start date changes
+                modalEndDate.min = this.value;
+                
+                // If end date is now less than start date, update it
+                if (modalEndDate.value < this.value) {
+                    modalEndDate.value = this.value;
+                }
+            });
+            
+            // Add event listener for end date changes
+            modalEndDate.addEventListener('change', function() {
+                // If end date is less than start date, show error
+                if (this.value < modalStartDate.value) {
+                    showDateError('End date cannot be earlier than start date');
+                    this.value = modalStartDate.value;
+                } else {
+                    hideDateError();
+                }
+            });
             
             modal.style.display = 'flex';
             hideDateError();
@@ -1555,7 +1686,15 @@ ob_start();
         }
 
         function exportToCSV() {
-            window.location.href = 'get_sale_details.php?export=csv&start_date=<?php echo $startDate; ?>&end_date=<?php echo $endDate; ?>&report_type=<?php echo $reportType; ?>&date_range=<?php echo $dateRange; ?>';
+            const reportType = '<?php echo $reportType; ?>';
+            let url = 'get_sale_details.php?export=csv&start_date=<?php echo $startDate; ?>&end_date=<?php echo $endDate; ?>&report_type=' + reportType;
+            
+            if (reportType === 'products') {
+                // Add additional parameters for product report
+                url += '&include_categories=true&include_quantities=true';
+            }
+            
+            window.location.href = url;
         }
     </script>
 </body>

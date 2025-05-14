@@ -6,6 +6,49 @@ require_once __DIR__ . '/../../../../app/config/database.php';
 require_once __DIR__ . '/../../../../app/config/auth.php';
 require_once __DIR__ . '/../../../../vendor/autoload.php'; // For TCPDF
 
+// Add Chart.php library
+require_once __DIR__ . '/../../../../app/libraries/Chart.php';
+
+// Function to generate narrative analysis
+function generateNarrativeAnalysis($data, $totalRevenue, $totalTransactions, $growth) {
+    $narrative = "";
+    
+    // Overall Performance
+    $narrative .= "Overall Performance:\n";
+    $narrative .= "The total revenue for this period was $" . number_format($totalRevenue, 2);
+    $narrative .= " with " . number_format($totalTransactions) . " transactions. ";
+    
+    // Growth Analysis
+    if ($growth > 0) {
+        $narrative .= "This represents a positive growth of " . round($growth, 1) . "% compared to the previous period. ";
+    } elseif ($growth < 0) {
+        $narrative .= "This shows a decline of " . abs(round($growth, 1)) . "% compared to the previous period. ";
+    } else {
+        $narrative .= "Performance remained stable compared to the previous period. ";
+    }
+    
+    // Trend Analysis
+    if (count($data) > 1) {
+        $revenueValues = array_column($data, 'total_revenue');
+        $lastValue = end($revenueValues);
+        $firstValue = reset($revenueValues);
+        
+        if ($lastValue > $firstValue) {
+            $narrative .= "\nThe trend shows an upward movement in revenue throughout the period. ";
+        } elseif ($lastValue < $firstValue) {
+            $narrative .= "\nThe trend shows a downward movement in revenue throughout the period. ";
+        } else {
+            $narrative .= "\nRevenue remained relatively stable throughout the period. ";
+        }
+        
+        // Average Transaction Value
+        $avgTransactionValue = $totalRevenue / max($totalTransactions, 1);
+        $narrative .= "\nThe average transaction value for this period was $" . number_format($avgTransactionValue, 2) . ". ";
+    }
+    
+    return $narrative;
+}
+
 // Check if user is logged in
 requireLogin();
 
@@ -159,7 +202,7 @@ if ($exportType === 'csv') {
     fclose($output);
     exit;
 } else {
-    // Clear any previous output before PDF generation
+    // Clear any previous output
     ob_clean();
     
     // Create PDF
@@ -175,7 +218,7 @@ if ($exportType === 'csv') {
             $this->Cell(0, 10, 'Page '.$this->getAliasNumPage().'/'.$this->getAliasNbPages(), 0, false, 'C', 0, '', 0, false, 'T', 'M');
         }
     }
-    
+
     // Create new PDF document
     $pdf = new MYPDF(PDF_PAGE_ORIENTATION, PDF_UNIT, PDF_PAGE_FORMAT, true, 'UTF-8', false);
     
@@ -183,9 +226,6 @@ if ($exportType === 'csv') {
     $pdf->SetCreator(PDF_CREATOR);
     $pdf->SetAuthor('Admin Panel');
     $pdf->SetTitle('Sales Report');
-    
-    // Set default header data
-    $pdf->SetHeaderData(PDF_HEADER_LOGO, PDF_HEADER_LOGO_WIDTH, PDF_HEADER_TITLE, PDF_HEADER_STRING);
     
     // Set margins
     $pdf->SetMargins(PDF_MARGIN_LEFT, PDF_MARGIN_TOP, PDF_MARGIN_RIGHT);
@@ -198,9 +238,6 @@ if ($exportType === 'csv') {
     // Add a page
     $pdf->AddPage();
     
-    // Set font
-    $pdf->SetFont('helvetica', '', 12);
-    
     // Add report header
     $pdf->SetFont('helvetica', 'B', 16);
     $pdf->Cell(0, 10, 'Sales Report', 0, 1, 'C');
@@ -211,7 +248,17 @@ if ($exportType === 'csv') {
     
     // Add summary
     $pdf->SetFont('helvetica', 'B', 14);
-    $pdf->Cell(0, 10, 'Summary', 0, 1, 'L');
+    $pdf->Cell(0, 10, 'Executive Summary', 0, 1, 'L');
+    $pdf->SetFont('helvetica', '', 12);
+    
+    // Add narrative analysis
+    $narrative = generateNarrativeAnalysis($data, $totalRevenue, $totalTransactions, $growth);
+    $pdf->MultiCell(0, 10, $narrative, 0, 'L');
+    $pdf->Ln(10);
+
+    // Add key metrics
+    $pdf->SetFont('helvetica', 'B', 14);
+    $pdf->Cell(0, 10, 'Key Metrics', 0, 1, 'L');
     $pdf->SetFont('helvetica', '', 12);
     
     $pdf->Cell(60, 10, 'Total Revenue:', 0, 0);
@@ -223,8 +270,74 @@ if ($exportType === 'csv') {
     $pdf->Cell(60, 10, 'Growth vs Previous Period:', 0, 0);
     $pdf->Cell(0, 10, round($growth, 1) . '%', 0, 1);
     $pdf->Ln(10);
-    
-    // Add detailed data
+
+    // Add charts for sales report
+    if ($reportType === 'sales') {
+        // Add Revenue Trend Chart
+        $pdf->AddPage();
+        $pdf->SetFont('helvetica', 'B', 14);
+        $pdf->Cell(0, 10, 'Revenue Trend Analysis', 0, 1, 'L');
+        $pdf->SetFont('helvetica', '', 12);
+        
+        // Create Revenue Chart
+        $chart = new Chart([
+            'type' => 'line',
+            'data' => [
+                'labels' => array_map(function($row) {
+                    return date('M d', strtotime($row['sale_date']));
+                }, $data),
+                'datasets' => [[
+                    'label' => 'Daily Revenue',
+                    'data' => array_column($data, 'total_revenue'),
+                    'borderColor' => '#4f46e5',
+                    'fill' => false
+                ]]
+            ]
+        ]);
+        
+        // Add chart to PDF
+        $chartImage = $chart->toBase64();
+        $pdf->ImageSVG('@'.$chartImage, 15, $pdf->GetY(), 180);
+        $pdf->Ln(110); // Space for the chart
+        
+        // Add chart description
+        $pdf->MultiCell(0, 10, 'The above chart shows the daily revenue trend over the selected period. ' . 
+            'This visualization helps identify patterns, peaks, and trends in your sales performance.', 0, 'L');
+        $pdf->Ln(10);
+        
+        // Add Transaction Volume Chart
+        $pdf->SetFont('helvetica', 'B', 14);
+        $pdf->Cell(0, 10, 'Transaction Volume Analysis', 0, 1, 'L');
+        $pdf->SetFont('helvetica', '', 12);
+        
+        // Create Transaction Chart
+        $chart = new Chart([
+            'type' => 'bar',
+            'data' => [
+                'labels' => array_map(function($row) {
+                    return date('M d', strtotime($row['sale_date']));
+                }, $data),
+                'datasets' => [[
+                    'label' => 'Daily Transactions',
+                    'data' => array_column($data, 'total_transactions'),
+                    'backgroundColor' => '#10b981'
+                ]]
+            ]
+        ]);
+        
+        // Add chart to PDF
+        $chartImage = $chart->toBase64();
+        $pdf->ImageSVG('@'.$chartImage, 15, $pdf->GetY(), 180);
+        $pdf->Ln(110); // Space for the chart
+        
+        // Add chart description
+        $pdf->MultiCell(0, 10, 'This chart displays the daily transaction volume. ' . 
+            'It helps visualize customer activity and identify busy periods in your business.', 0, 'L');
+        $pdf->Ln(10);
+    }
+
+    // Add detailed data table
+    $pdf->AddPage();
     $pdf->SetFont('helvetica', 'B', 14);
     $pdf->Cell(0, 10, 'Detailed Data', 0, 1, 'L');
     $pdf->SetFont('helvetica', '', 12);
@@ -284,8 +397,7 @@ if ($exportType === 'csv') {
         $pdf->Ln();
     }
     
-    // Clear any previous output and send PDF
-    ob_end_clean();
+    // Output PDF
     $pdf->Output('sales_report_' . date('Y-m-d') . '.pdf', 'D');
     exit;
 } 

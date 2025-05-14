@@ -7,14 +7,14 @@ try {
     $todaySales = $pdo->query("
         SELECT COALESCE(SUM(total_amount), 0) as total 
         FROM sales 
-        WHERE DATE(created_at) = CURDATE()
+        WHERE DATE(created_at) = CURRENT_DATE()
     ")->fetch(PDO::FETCH_ASSOC)['total'];
 
     // Today's transactions count
     $todayTransactions = $pdo->query("
         SELECT COUNT(*) as count 
         FROM sales 
-        WHERE DATE(created_at) = CURDATE()
+        WHERE DATE(created_at) = CURRENT_DATE()
     ")->fetch(PDO::FETCH_ASSOC)['count'];
 
     // Low stock items (less than 10 units)
@@ -24,11 +24,11 @@ try {
         WHERE stock < 10
     ")->fetch(PDO::FETCH_ASSOC)['count'];
 
-    // Active users
+    // Active users today
     $activeUsers = $pdo->query("
         SELECT COUNT(DISTINCT user_id) as count 
         FROM sales 
-        WHERE DATE(created_at) = CURDATE()
+        WHERE DATE(created_at) = CURRENT_DATE()
     ")->fetch(PDO::FETCH_ASSOC)['count'];
 
     // Recent transactions
@@ -41,6 +41,19 @@ try {
         LIMIT 10
     ")->fetchAll(PDO::FETCH_ASSOC);
 
+    // Yesterday's sales for comparison
+    $yesterdaySales = $pdo->query("
+        SELECT COALESCE(SUM(total_amount), 0) as total 
+        FROM sales 
+        WHERE DATE(created_at) = DATE_SUB(CURRENT_DATE(), INTERVAL 1 DAY)
+    ")->fetch(PDO::FETCH_ASSOC)['total'];
+
+    // Calculate growth percentage
+    $salesGrowth = 0;
+    if ($yesterdaySales > 0) {
+        $salesGrowth = (($todaySales - $yesterdaySales) / $yesterdaySales) * 100;
+    }
+
 } catch(PDOException $e) {
     // Handle error appropriately
     error_log("Dashboard Error: " . $e->getMessage());
@@ -49,7 +62,11 @@ try {
     $lowStockItems = 0;
     $activeUsers = 0;
     $recentTransactions = [];
+    $salesGrowth = 0;
 }
+
+// Format currency symbol
+$currencySymbol = '₱';
 ?>
 
 <!-- Dashboard Section -->
@@ -78,10 +95,15 @@ try {
             <div class="flex justify-between items-start">
                 <div>
                     <p class="text-sm font-medium text-gray-500">Total Sales</p>
-                    <h3 class="text-2xl font-bold mt-1 value">₱<?= number_format($todaySales, 2) ?></h3>
+                    <h3 class="text-2xl font-bold mt-1 value"><?= $currencySymbol . number_format($todaySales, 2) ?></h3>
                     <p class="text-sm mt-2 flex items-center growth">
-                        <i class="fas fa-arrow-up mr-1"></i>
-                        <span>0% vs last period</span>
+                        <?php if ($salesGrowth >= 0): ?>
+                            <i class="fas fa-arrow-up mr-1 text-green-500"></i>
+                            <span class="text-green-500"><?= number_format(abs($salesGrowth), 1) ?>% vs yesterday</span>
+                        <?php else: ?>
+                            <i class="fas fa-arrow-down mr-1 text-red-500"></i>
+                            <span class="text-red-500"><?= number_format(abs($salesGrowth), 1) ?>% vs yesterday</span>
+                        <?php endif; ?>
                     </p>
                 </div>
                 <div class="bg-blue-100 p-3 rounded-lg">
@@ -95,10 +117,10 @@ try {
             <div class="flex justify-between items-start">
                 <div>
                     <p class="text-sm font-medium text-gray-500">Total Discount</p>
-                    <h3 class="text-2xl font-bold mt-1 value">₱0.00</h3>
+                    <h3 class="text-2xl font-bold mt-1 value"><?= $currencySymbol ?>0.00</h3>
                     <p class="text-sm mt-2 flex items-center growth">
-                        <i class="fas fa-arrow-up mr-1"></i>
-                        <span>0% vs last period</span>
+                        <i class="fas fa-minus mr-1 text-gray-500"></i>
+                        <span class="text-gray-500">No change</span>
                     </p>
                 </div>
                 <div class="bg-green-100 p-3 rounded-lg">
@@ -112,10 +134,15 @@ try {
             <div class="flex justify-between items-start">
                 <div>
                     <p class="text-sm font-medium text-gray-500">Total Revenue</p>
-                    <h3 class="text-2xl font-bold mt-1 value">₱0.00</h3>
+                    <h3 class="text-2xl font-bold mt-1 value"><?= $currencySymbol . number_format($todaySales, 2) ?></h3>
                     <p class="text-sm mt-2 flex items-center growth">
-                        <i class="fas fa-arrow-up mr-1"></i>
-                        <span>0% vs last period</span>
+                        <?php if ($salesGrowth >= 0): ?>
+                            <i class="fas fa-arrow-up mr-1 text-green-500"></i>
+                            <span class="text-green-500"><?= number_format(abs($salesGrowth), 1) ?>% vs yesterday</span>
+                        <?php else: ?>
+                            <i class="fas fa-arrow-down mr-1 text-red-500"></i>
+                            <span class="text-red-500"><?= number_format(abs($salesGrowth), 1) ?>% vs yesterday</span>
+                        <?php endif; ?>
                     </p>
                 </div>
                 <div class="bg-yellow-100 p-3 rounded-lg">
@@ -131,8 +158,8 @@ try {
                     <p class="text-sm font-medium text-gray-500">Total Transactions</p>
                     <h3 class="text-2xl font-bold mt-1 value"><?= $todayTransactions ?></h3>
                     <p class="text-sm mt-2 flex items-center growth">
-                        <i class="fas fa-arrow-up mr-1"></i>
-                        <span>0% vs last period</span>
+                        <i class="fas fa-minus mr-1 text-gray-500"></i>
+                        <span class="text-gray-500">No change</span>
                     </p>
                 </div>
                 <div class="bg-purple-100 p-3 rounded-lg">
@@ -205,7 +232,7 @@ try {
                         <td class="px-6 py-4"><?= date('M d, h:i A', strtotime($transaction['created_at'])) ?></td>
                         <td class="px-6 py-4"><?= htmlspecialchars($transaction['cashier_name']) ?></td>
                         <td class="px-6 py-4"><?= $transaction['item_count'] ?></td>
-                        <td class="px-6 py-4"><?= number_format($transaction['total_amount'], 2) ?> <?= CONFIG['CURRENCY'] ?></td>
+                        <td class="px-6 py-4"><?= $currencySymbol . number_format($transaction['total_amount'], 2) ?></td>
                         <td class="px-6 py-4">
                             <span class="px-2 py-1 text-xs rounded-full bg-green-100 text-green-800">Completed</span>
                         </td>
@@ -248,7 +275,26 @@ function initializeSalesChart() {
         },
         options: {
             responsive: true,
-            maintainAspectRatio: false
+            maintainAspectRatio: false,
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    ticks: {
+                        callback: function(value) {
+                            return '<?= $currencySymbol ?>' + value.toLocaleString();
+                        }
+                    }
+                }
+            },
+            plugins: {
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            return '<?= $currencySymbol ?>' + context.parsed.y.toLocaleString();
+                        }
+                    }
+                }
+            }
         }
     });
 
@@ -276,7 +322,15 @@ function initializeProductsChart() {
         },
         options: {
             responsive: true,
-            maintainAspectRatio: false
+            maintainAspectRatio: false,
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    ticks: {
+                        stepSize: 1
+                    }
+                }
+            }
         }
     });
 
@@ -300,9 +354,15 @@ async function updateSalesChart(period) {
             chart.data.labels = data.labels;
             chart.data.datasets[0].data = data.values;
             chart.update();
+        } else {
+            console.error('Error:', data.message);
+            document.getElementById('error-message').textContent = data.message;
+            document.getElementById('error-message').classList.remove('hidden');
         }
     } catch (error) {
         console.error('Error updating sales chart:', error);
+        document.getElementById('error-message').textContent = 'Failed to update sales chart';
+        document.getElementById('error-message').classList.remove('hidden');
     }
 }
 
@@ -317,9 +377,15 @@ async function updateProductsChart(period) {
             chart.data.labels = data.labels;
             chart.data.datasets[0].data = data.values;
             chart.update();
+        } else {
+            console.error('Error:', data.message);
+            document.getElementById('error-message').textContent = data.message;
+            document.getElementById('error-message').classList.remove('hidden');
         }
     } catch (error) {
         console.error('Error updating products chart:', error);
+        document.getElementById('error-message').textContent = 'Failed to update products chart';
+        document.getElementById('error-message').classList.remove('hidden');
     }
 }
 

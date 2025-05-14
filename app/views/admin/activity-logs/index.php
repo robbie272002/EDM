@@ -25,7 +25,6 @@ try {
     $stmt->execute();
     $logs = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (PDOException $e) {
-    $_SESSION['error_message'] = "Error fetching activity logs";
     $logs = [];
 }
 
@@ -42,217 +41,7 @@ error_log("Session data: " . print_r($_SESSION, true));
 // Add JavaScript for filter handling
 ?>
 <script>
-document.addEventListener('DOMContentLoaded', function() {
-    // Initialize date inputs with current date range if not set
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const todayStr = today.toISOString().split('T')[0];
-    
-    const lastMonth = new Date();
-    lastMonth.setMonth(lastMonth.getMonth() - 1);
-    const lastMonthStr = lastMonth.toISOString().split('T')[0];
-    
-    const dateFrom = document.getElementById('date_from');
-    const dateTo = document.getElementById('date_to');
-    const modalStartDate = document.getElementById('modalStartDate');
-    const modalEndDate = document.getElementById('modalEndDate');
-    
-    // Set max date for both inputs to today
-    modalStartDate.setAttribute('max', todayStr);
-    modalEndDate.setAttribute('max', todayStr);
-    
-    // Prevent manual input of future dates
-    modalStartDate.addEventListener('input', function(e) {
-        const inputDate = new Date(this.value);
-        inputDate.setHours(0, 0, 0, 0);
-        
-        if (inputDate > today) {
-            this.value = todayStr;
-            showDateError('Start date cannot be in the future');
-        }
-    });
-    
-    // Set default dates if not already set
-    if (!dateFrom.value) {
-        dateFrom.value = lastMonthStr;
-        modalStartDate.value = lastMonthStr;
-    } else {
-        // Ensure existing date is not in future
-        const existingDate = new Date(dateFrom.value);
-        existingDate.setHours(0, 0, 0, 0);
-        if (existingDate > today) {
-            dateFrom.value = todayStr;
-            modalStartDate.value = todayStr;
-        }
-    }
-    
-    if (!dateTo.value) {
-        dateTo.value = todayStr;
-        modalEndDate.value = todayStr;
-    }
-    
-    // Add event listener for search input (debounced)
-    let searchTimeout;
-    const searchInput = document.querySelector('input[name="search"]');
-    searchInput.addEventListener('input', function() {
-        clearTimeout(searchTimeout);
-        searchTimeout = setTimeout(() => {
-            this.form.submit();
-        }, 500);
-    });
-
-    // Add event listeners for date inputs
-    modalStartDate.addEventListener('change', function() {
-        const startDate = new Date(this.value);
-        const endDate = new Date(modalEndDate.value);
-        
-        // Reset time to midnight for accurate comparison
-        startDate.setHours(0, 0, 0, 0);
-        
-        // Strict validation for start date
-        if (startDate > today) {
-            this.value = todayStr;
-            showDateError('Start date cannot be in the future');
-            return;
-        }
-        
-        // Update end date constraints
-        if (endDate < startDate) {
-            modalEndDate.value = this.value;
-        }
-        
-        // Ensure end date is not before start date
-        modalEndDate.min = this.value;
-        hideDateError();
-    });
-
-    modalEndDate.addEventListener('change', function() {
-        const startDate = new Date(modalStartDate.value);
-        const endDate = new Date(this.value);
-        
-        // Reset time to midnight for accurate comparison
-        endDate.setHours(0, 0, 0, 0);
-        
-        // Validate end date
-        if (endDate > today) {
-            this.value = todayStr;
-            showDateError('End date cannot be in the future');
-            return;
-        }
-        
-        hideDateError();
-    });
-});
-
-function showDateError(message) {
-    const errorDiv = document.getElementById('dateError');
-    errorDiv.textContent = message;
-    errorDiv.classList.remove('hidden');
-}
-
-function hideDateError() {
-    const errorDiv = document.getElementById('dateError');
-    errorDiv.classList.add('hidden');
-}
-
-function openDateModal() {
-    const modal = document.getElementById('dateModal');
-    const modalStartDate = document.getElementById('modalStartDate');
-    const modalEndDate = document.getElementById('modalEndDate');
-    const dateFrom = document.getElementById('date_from');
-    const dateTo = document.getElementById('date_to');
-    
-    // Get today's date for validation
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const todayStr = today.toISOString().split('T')[0];
-    
-    // Validate and set start date
-    let startValue = dateFrom.value;
-    const startDate = new Date(startValue);
-    startDate.setHours(0, 0, 0, 0);
-    
-    if (startDate > today) {
-        startValue = todayStr;
-    }
-    
-    // Set modal values
-    modalStartDate.value = startValue;
-    modalEndDate.value = dateTo.value;
-    
-    // Set constraints
-    modalStartDate.max = todayStr;
-    modalEndDate.max = todayStr;
-    modalEndDate.min = modalStartDate.value;
-    
-    modal.classList.add('show');
-}
-
-function closeDateModal() {
-    document.getElementById('dateModal').classList.remove('show');
-    document.getElementById('dateError').classList.add('hidden');
-}
-
-function applyDateRange() {
-    const startDate = document.getElementById('modalStartDate').value;
-    const endDate = document.getElementById('modalEndDate').value;
-    
-    // Validate dates
-    if (!startDate || !endDate) {
-        showDateError('Both start and end dates are required');
-        return;
-    }
-
-    const start = new Date(startDate);
-    const end = new Date(endDate);
-    const today = new Date();
-    
-    // Reset time to midnight for accurate comparison
-    start.setHours(0, 0, 0, 0);
-    end.setHours(0, 0, 0, 0);
-    today.setHours(0, 0, 0, 0);
-
-    // Strict validation
-    if (start > today) {
-        showDateError('Start date cannot be in the future');
-        document.getElementById('modalStartDate').value = today.toISOString().split('T')[0];
-        return;
-    }
-
-    if (end > today) {
-        showDateError('End date cannot be in the future');
-        document.getElementById('modalEndDate').value = today.toISOString().split('T')[0];
-        return;
-    }
-
-    if (start > end) {
-        showDateError('Start date cannot be after end date');
-        return;
-    }
-
-    // Set values and submit form
-    document.getElementById('date_from').value = startDate;
-    document.getElementById('date_to').value = endDate;
-    closeDateModal();
-    document.getElementById('filterForm').submit();
-}
-
-// Reset filters function
-function resetFilters() {
-    document.querySelector('select[name="action_type"]').value = '';
-    document.querySelector('input[name="date_from"]').value = '';
-    document.querySelector('input[name="date_to"]').value = '';
-    document.querySelector('input[name="search"]').value = '';
-    document.getElementById('filterForm').submit();
-}
-
-// Close modal when clicking outside
-window.onclick = function(event) {
-    const modal = document.getElementById('dateModal');
-    if (event.target === modal) {
-        closeDateModal();
-    }
-}
+// Remove all the old JavaScript code and keep only Alpine.js implementation
 </script>
 
 <!DOCTYPE html>
@@ -396,14 +185,64 @@ window.onclick = function(event) {
     endDate: '',
     dateError: '',
     today: new Date().toISOString().split('T')[0],
+    hasVisibleRows: true,
+    
+    init() {
+        // Set default date range to last 30 days
+        const today = new Date();
+        const lastMonth = new Date();
+        lastMonth.setDate(lastMonth.getDate() - 30);
+        
+        this.endDate = today.toISOString().split('T')[0];
+        this.startDate = lastMonth.toISOString().split('T')[0];
+        
+        // Initial filter
+        this.$nextTick(() => {
+            this.filterLogs();
+        });
+    },
+
+    validateDates() {
+        const start = new Date(this.startDate);
+        const end = new Date(this.endDate);
+        const today = new Date();
+        
+        start.setHours(0, 0, 0, 0);
+        end.setHours(0, 0, 0, 0);
+        today.setHours(0, 0, 0, 0);
+
+        if (start > today) {
+            this.dateError = 'Start date cannot be in the future';
+            this.startDate = this.today;
+            return false;
+        }
+
+        if (end > today) {
+            this.dateError = 'End date cannot be in the future';
+            this.endDate = this.today;
+            return false;
+        }
+
+        if (start > end) {
+            this.dateError = 'Start date cannot be after end date';
+            return false;
+        }
+
+        this.dateError = '';
+        return true;
+    },
+
     filterLogs() {
+        if (!this.validateDates()) return;
+
         const searchLower = this.searchQuery.toLowerCase();
         const actionType = this.selectedActionType.toLowerCase();
         const rows = document.querySelectorAll('tbody tr');
+        let visibleCount = 0;
         
         rows.forEach(row => {
             const timestamp = row.querySelector('td:nth-child(1)').textContent.toLowerCase();
-            const user = row.querySelector('td:nth-child(2)').textContent.toLowerCase();
+            const userName = row.querySelector('td:nth-child(2)').textContent.toLowerCase();
             const action = row.querySelector('td:nth-child(3)').textContent.toLowerCase();
             const description = row.querySelector('td:nth-child(4)').textContent.toLowerCase();
             const details = row.querySelector('td:nth-child(5)').textContent.toLowerCase();
@@ -411,7 +250,7 @@ window.onclick = function(event) {
             // Search filter
             const matchesSearch = !searchLower || 
                 timestamp.includes(searchLower) ||
-                user.includes(searchLower) ||
+                userName.includes(searchLower) ||
                 action.includes(searchLower) ||
                 description.includes(searchLower) ||
                 details.includes(searchLower);
@@ -423,56 +262,24 @@ window.onclick = function(event) {
             
             // Date range filtering
             let matchesDateRange = true;
-            if (this.startDate || this.endDate) {
-                const logDate = new Date(timestamp.split(' ')[0]);
-                const startDate = this.startDate ? new Date(this.startDate) : null;
-                const endDate = this.endDate ? new Date(this.endDate) : null;
+            if (this.startDate && this.endDate) {
+                const rowTimestamp = new Date(timestamp);
+                const startDate = new Date(this.startDate);
+                const endDate = new Date(this.endDate);
                 
-                // Set end date to end of day if it exists
-                if (endDate) {
+                // Set time to start of day for start date and end of day for end date
+                startDate.setHours(0, 0, 0, 0);
                     endDate.setHours(23, 59, 59, 999);
-                }
                 
-                if (startDate && startDate > logDate) {
-                    matchesDateRange = false;
+                matchesDateRange = rowTimestamp >= startDate && rowTimestamp <= endDate;
                 }
-                if (endDate && endDate < logDate) {
-                    matchesDateRange = false;
-                }
-            }
             
-            row.style.display = matchesSearch && matchesActionType && matchesDateRange ? '' : 'none';
+            const isVisible = matchesSearch && matchesActionType && matchesDateRange;
+            row.style.display = isVisible ? '' : 'none';
+            if (isVisible) visibleCount++;
         });
-    },
-    applyDateRange() {
-        // Validate dates
-        if (this.startDate && this.endDate) {
-            const start = new Date(this.startDate);
-            const end = new Date(this.endDate);
-            
-            if (start > end) {
-                this.dateError = 'Start date cannot be after end date';
-                return;
-            }
-        }
-        
-        this.dateError = '';
-        this.showDateModal = false;
-        this.filterLogs();
-    },
-    resetDateRange() {
-        this.startDate = '';
-        this.endDate = '';
-        this.dateError = '';
-        this.filterLogs();
-    },
-    resetFilters() {
-        this.searchQuery = '';
-        this.selectedActionType = '';
-        this.startDate = '';
-        this.endDate = '';
-        this.dateError = '';
-        this.filterLogs();
+
+        this.hasVisibleRows = visibleCount > 0;
     }
 }" class="min-h-screen flex">
     <div class="min-h-screen flex">
@@ -494,7 +301,7 @@ window.onclick = function(event) {
 
                 <!-- Filter Bar -->
                 <div class="bg-white rounded-lg shadow mb-6">
-                    <div class="p-6">
+                    <div class="p-4">
                         <div class="flex justify-between items-center">
                             <div class="flex space-x-4 flex-1">
                                 <div class="relative flex-1">
@@ -515,45 +322,43 @@ window.onclick = function(event) {
                                         </option>
                                     <?php endforeach; ?>
                                 </select>
-                                <div class="flex space-x-2">
                                     <button @click="showDateModal = true" 
                                             class="px-4 py-2 border rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-500">
                                         <i class="fas fa-calendar mr-2"></i> Date Range
                                     </button>
-                                    <button @click="resetDateRange()" 
-                                            class="px-4 py-2 border rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                                            x-show="startDate || endDate">
-                                        <i class="fas fa-times mr-2"></i> Clear Dates
-                                    </button>
-                                    <button @click="resetFilters()" 
-                                            class="px-4 py-2 border rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                                            x-show="searchQuery || selectedActionType || startDate || endDate">
-                                        <i class="fas fa-undo mr-2"></i> Reset All
-                                    </button>
-                                </div>
                             </div>
                         </div>
+
                         <!-- Active Filters -->
                         <div class="mt-4 flex flex-wrap gap-2" x-show="searchQuery || selectedActionType || startDate || endDate">
                             <div class="text-sm text-gray-600 flex flex-wrap gap-2">
                                 <template x-if="searchQuery">
-                                    <span class="bg-gray-100 px-2 py-1 rounded">
-                                        <span class="font-medium">Search:</span>
+                                    <span class="bg-gray-100 px-3 py-1 rounded-full flex items-center">
+                                        <span class="font-medium mr-1">Search:</span>
                                         <span x-text="searchQuery"></span>
+                                        <button @click="searchQuery = ''; filterLogs()" class="ml-2 text-gray-500 hover:text-gray-700">
+                                            <i class="fas fa-times"></i>
+                                        </button>
                                     </span>
                                 </template>
                                 <template x-if="selectedActionType">
-                                    <span class="bg-gray-100 px-2 py-1 rounded">
-                                        <span class="font-medium">Action:</span>
+                                    <span class="bg-gray-100 px-3 py-1 rounded-full flex items-center">
+                                        <span class="font-medium mr-1">Action:</span>
                                         <span x-text="selectedActionType.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')"></span>
+                                        <button @click="selectedActionType = ''; filterLogs()" class="ml-2 text-gray-500 hover:text-gray-700">
+                                            <i class="fas fa-times"></i>
+                                        </button>
                                     </span>
                                 </template>
                                 <template x-if="startDate || endDate">
-                                    <span class="bg-gray-100 px-2 py-1 rounded">
-                                        <span class="font-medium">Date Range:</span>
+                                    <span class="bg-gray-100 px-3 py-1 rounded-full flex items-center">
+                                        <span class="font-medium mr-1">Date Range:</span>
                                         <span x-text="startDate ? new Date(startDate).toLocaleDateString() : 'Any'"></span>
-                                        <span>to</span>
+                                        <span class="mx-1">to</span>
                                         <span x-text="endDate ? new Date(endDate).toLocaleDateString() : 'Any'"></span>
+                                        <button @click="startDate = ''; endDate = ''; filterLogs()" class="ml-2 text-gray-500 hover:text-gray-700">
+                                            <i class="fas fa-times"></i>
+                                        </button>
                                     </span>
                                 </template>
                             </div>
@@ -561,22 +366,7 @@ window.onclick = function(event) {
                     </div>
                 </div>
 
-                <!-- Notifications -->
-                <?php if (isset($_SESSION['success_message'])): ?>
-                    <div class="mb-4 bg-green-100 border-l-4 border-green-500 text-green-700 p-4 rounded-r-lg shadow-sm" role="alert">
-                        <p><?= htmlspecialchars($_SESSION['success_message']) ?></p>
-                    </div>
-                    <?php unset($_SESSION['success_message']); ?>
-                <?php endif; ?>
-
-                <?php if (isset($_SESSION['error_message'])): ?>
-                    <div class="mb-4 bg-red-100 border-l-4 border-red-500 text-red-700 p-4 rounded-r-lg shadow-sm" role="alert">
-                        <p><?= htmlspecialchars($_SESSION['error_message']) ?></p>
-                    </div>
-                    <?php unset($_SESSION['error_message']); ?>
-                <?php endif; ?>
-
-                <!-- Logs Table -->
+                <!-- Activity Logs Table -->
                 <div class="bg-white shadow rounded-lg overflow-hidden">
                     <?php if (empty($logs)): ?>
                         <div class="p-6 text-center text-gray-500">
@@ -633,6 +423,30 @@ window.onclick = function(event) {
                                     <?php endforeach; ?>
                                 </tbody>
                             </table>
+                            
+                            <!-- No Results Message -->
+                            <div x-show="!hasVisibleRows" 
+                                 x-cloak
+                                 class="py-12 text-center bg-gray-50 rounded-lg border-t">
+                                <div class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-gray-100 mb-4">
+                                    <i class="fas fa-search text-gray-400 text-2xl"></i>
+                                </div>
+                                <h3 class="text-lg font-medium text-gray-900 mb-2">No Activity Logs Found</h3>
+                                <p class="text-sm text-gray-600">
+                                    <template x-if="startDate && endDate">
+                                        <span>No activity logs have been found for the selected date range.</span>
+                                    </template>
+                                    <template x-if="searchQuery && !startDate && !endDate">
+                                        <span>No activity logs match your search criteria.</span>
+                                    </template>
+                                    <template x-if="selectedActionType && !startDate && !endDate">
+                                        <span>No activity logs found for the selected action type.</span>
+                                    </template>
+                                    <template x-if="!searchQuery && !selectedActionType && !startDate && !endDate">
+                                        <span>No activity logs available.</span>
+                                    </template>
+                                </p>
+                            </div>
                         </div>
                     <?php endif; ?>
                 </div>
@@ -651,68 +465,44 @@ window.onclick = function(event) {
          x-transition:leave-start="opacity-100"
          x-transition:leave-end="opacity-0"
          @click.away="showDateModal = false">
-      <div class="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md">
+        <div class="bg-white rounded-lg p-6 w-full max-w-md">
         <h2 class="text-xl font-semibold mb-6 text-gray-800">Custom Date Range</h2>
-        <form @submit.prevent="applyDateRange()" class="w-full">
-          <div class="flex gap-6 mb-4">
-            <div class="flex-1">
-              <label for="modalStartDate" class="block text-gray-700 font-medium mb-2">Start Date</label>
-              <input type="date" id="modalStartDate" x-model="startDate"
-                class="w-full rounded-lg border border-gray-300 px-4 py-2 text-gray-700 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 transition"
-                :max="endDate || today" onkeydown="return false">
+            <form @submit.prevent="filterLogs(); showDateModal = false" class="space-y-4">
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label for="modalStartDate" class="block text-sm font-medium text-gray-700 mb-1">Start Date</label>
+                        <input type="date" 
+                               id="modalStartDate" 
+                               x-model="startDate"
+                               @change="validateDates(); filterLogs()"
+                               :max="endDate || today"
+                               class="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500">
             </div>
-            <div class="flex-1">
-              <label for="modalEndDate" class="block text-gray-700 font-medium mb-2">End Date</label>
-              <input type="date" id="modalEndDate" x-model="endDate"
-                class="w-full rounded-lg border border-gray-300 px-4 py-2 text-gray-700 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 transition"
-                :min="startDate" :max="today" onkeydown="return false">
+                    <div>
+                        <label for="modalEndDate" class="block text-sm font-medium text-gray-700 mb-1">End Date</label>
+                        <input type="date" 
+                               id="modalEndDate" 
+                               x-model="endDate"
+                               @change="validateDates(); filterLogs()"
+                               :min="startDate"
+                               :max="today"
+                               class="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500">
             </div>
           </div>
-          <div x-show="dateError" class="text-sm text-red-600 mb-4" x-text="dateError"></div>
-          <div class="flex justify-end gap-3">
-            <button type="button" @click="showDateModal = false"
-              class="px-5 py-2 rounded-lg bg-gray-100 text-gray-700 font-semibold hover:bg-gray-200 transition btn-secondary">Cancel</button>
+                <div x-show="dateError" class="text-sm text-red-600" x-text="dateError"></div>
+                <div class="flex justify-end space-x-3">
+                    <button type="button" 
+                            @click="showDateModal = false"
+                            class="px-4 py-2 border rounded-lg text-gray-700 hover:bg-gray-50">
+                        Cancel
+                    </button>
             <button type="submit"
-              class="px-5 py-2 rounded-lg bg-indigo-500 text-white font-semibold hover:bg-indigo-600 transition btn-primary">Apply</button>
+                            class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">
+                        Apply
+                    </button>
           </div>
         </form>
       </div>
     </div>
-    <style>
-    /* Fallback for non-Tailwind environments */
-    #customDateModal .modal-content {
-      background: #fff;
-      border-radius: 1rem;
-      box-shadow: 0 8px 32px rgba(0,0,0,0.15);
-      padding: 2rem;
-      width: 100%;
-      max-width: 400px;
-    }
-    .modal-fields {
-      display: flex; gap: 1.5rem; margin-bottom: 1rem;
-    }
-    .modal-fields label {
-      display: block; color: #374151; font-weight: 500; margin-bottom: 0.5rem;
-    }
-    .filter-date {
-      width: 100%; border-radius: 0.5rem; border: 1px solid #d1d5db;
-      padding: 0.5rem 1rem; color: #374151;
-    }
-    .modal-actions {
-      display: flex; justify-content: flex-end; gap: 0.75rem; margin-top: 1rem;
-    }
-    .btn-primary {
-      background: #6366f1; color: #fff; font-weight: 600;
-      border-radius: 0.5rem; padding: 0.5rem 1.25rem; border: none;
-      transition: background 0.2s;
-    }
-    .btn-primary:hover { background: #4f46e5; }
-    .btn-secondary {
-      background: #f3f4f6; color: #374151; font-weight: 600;
-      border-radius: 0.5rem; padding: 0.5rem 1.25rem; border: none;
-      transition: background 0.2s;
-    }
-    .btn-secondary:hover { background: #e5e7eb; }
-    </style>
 </body>
 </html> 
